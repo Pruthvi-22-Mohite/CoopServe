@@ -1,13 +1,50 @@
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { DEMO_ACCOUNTS, ROLES } from '../config/constants.js';
 
-const generateToken = (user) => {
+const generateAccessToken = (user) => {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'coopserve_jwt_secret_production_key_2026',
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+};
+
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    { id: user.id, tokenVersion: user.tokenVersion || 0 },
+    process.env.JWT_REFRESH_SECRET,
     { expiresIn: '7d' }
   );
+};
+
+// Cookie management helper functions (zero additional npm dependencies)
+export const getRefreshTokenFromReq = (req) => {
+  if (req.cookies?.refreshToken) return req.cookies.refreshToken;
+  const cookieHeader = req.headers?.cookie;
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/(?:^|;\s*)refreshToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+export const setRefreshTokenCookie = (res, token) => {
+  res.cookie('refreshToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  });
+};
+
+export const clearRefreshTokenCookie = (res) => {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/'
+  });
 };
 
 export const login = async (req, res) => {
@@ -30,21 +67,37 @@ export const login = async (req, res) => {
       });
     }
 
-    // In demo environment, allow 'password123' or exact match
-    if (user.password !== password && password !== 'demo123' && password !== 'password123') {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid password. For demo accounts use: password123'
-      });
+    // Explicit demo vs registered account verification
+    if (user.isDemoAccount) {
+      // For published demo accounts, allow known demo passwords without bcrypt hashing
+      const isDemoMatch = user.password === password || password === 'demo123' || password === 'password123';
+      if (!isDemoMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid password. For demo accounts use: password123'
+        });
+      }
+    } else {
+      // For all non-demo accounts, strictly compare using bcrypt
+      const isPasswordMatch = await bcrypt.compare(password, user.password);
+      if (!isPasswordMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials. Password does not match.'
+        });
+      }
     }
 
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    setRefreshTokenCookie(res, refreshToken);
+
     const { password: _, ...userWithoutPassword } = user;
 
     return res.status(200).json({
       success: true,
       message: 'Login successful',
-      token,
+      token: accessToken,
       user: userWithoutPassword
     });
   } catch (error) {
@@ -77,13 +130,16 @@ export const demoLogin = async (req, res) => {
       });
     }
 
-    const token = generateToken(demoUser);
+    const accessToken = generateAccessToken(demoUser);
+    const refreshToken = generateRefreshToken(demoUser);
+    setRefreshTokenCookie(res, refreshToken);
+
     const { password: _, ...userWithoutPassword } = demoUser;
 
     return res.status(200).json({
       success: true,
       message: `Switched to Demo ${demoUser.role} (${demoUser.name})`,
-      token,
+      token: accessToken,
       user: userWithoutPassword
     });
   } catch (error) {
@@ -114,16 +170,18 @@ export const register = async (req, res) => {
       });
     }
 
+    // Admin accounts must be created via a separate seeded/protected mechanism, not public signup.
+    // Public registration only ever allows CUSTOMER or SERVICE_PROVIDER, regardless of input role.
     const mappedRole = (role === 'SERVICE_PROVIDER' || role === 'PROVIDER')
       ? ROLES.SERVICE_PROVIDER
-      : role === 'ADMIN'
-      ? ROLES.ADMIN
       : ROLES.CUSTOMER;
+
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const userData = {
       name,
       email,
-      password,
+      password: hashedPassword,
       role: mappedRole,
       phone: phone || '+91 90000 00000',
       location: location || 'Pune, MH',
@@ -145,19 +203,117 @@ export const register = async (req, res) => {
     };
 
     const newUser = inMemoryStore.addUser(userData);
-    const token = generateToken(newUser);
+    const accessToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+    setRefreshTokenCookie(res, refreshToken);
+
     const { password: _, ...userWithoutPassword } = newUser;
 
     return res.status(201).json({
       success: true,
       message: 'Account registered successfully',
-      token,
+      token: accessToken,
       user: userWithoutPassword
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: 'Error registering new account',
+      error: error.message
+    });
+  }
+};
+
+export const refresh = async (req, res) => {
+  try {
+    const rawRefreshToken = getRefreshTokenFromReq(req);
+
+    if (!rawRefreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'No refresh token provided in cookies.'
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(rawRefreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch (err) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token.',
+        error: err.message
+      });
+    }
+
+    const user = inMemoryStore.findUserById(decoded.id);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User belonging to token no longer exists.'
+      });
+    }
+
+    // Revocation and tokenVersion check
+    if (
+      decoded.tokenVersion === undefined ||
+      decoded.tokenVersion !== user.tokenVersion ||
+      inMemoryStore.isTokenRevoked(user.id, decoded.tokenVersion)
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token has been revoked or invalidated.'
+      });
+    }
+
+    // Invalidate old token by incrementing tokenVersion & issue new rotated tokens
+    inMemoryStore.incrementTokenVersion(user.id);
+    const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+    setRefreshTokenCookie(res, newRefreshToken);
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    return res.status(200).json({
+      success: true,
+      token: newAccessToken,
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during token refresh.',
+      error: error.message
+    });
+  }
+};
+
+export const logout = async (req, res) => {
+  try {
+    const rawRefreshToken = getRefreshTokenFromReq(req);
+    if (rawRefreshToken) {
+      try {
+        const decoded = jwt.verify(rawRefreshToken, process.env.JWT_REFRESH_SECRET);
+        if (decoded?.id) {
+          inMemoryStore.incrementTokenVersion(decoded.id);
+        }
+      } catch {
+        // Continue clearing cookie even if token was already expired
+      }
+    }
+
+    clearRefreshTokenCookie(res);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logged out successfully.'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during logout.',
       error: error.message
     });
   }

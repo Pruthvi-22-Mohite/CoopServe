@@ -3,7 +3,7 @@ import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCal
 
 class InMemoryStore {
   constructor() {
-    this.users = [...DEMO_ACCOUNTS];
+    this.users = DEMO_ACCOUNTS.map(u => ({ ...u, tokenVersion: 0 }));
 
     this.categories = [
       { id: 'cleaning', name: 'Cleaning & Sanitization', nameHi: 'सफ़ाई और स्वच्छता', nameMr: 'स्वच्छता आणि निर्जंतुकीकरण', icon: 'Sparkles', count: 24, avgPrice: 499, popular: true },
@@ -510,10 +510,37 @@ class InMemoryStore {
     const newUser = {
       id: `usr_${Date.now()}`,
       ...userData,
+      isDemoAccount: false,
+      tokenVersion: 0,
       memberSince: new Date().toISOString().split('T')[0]
     };
     this.users.push(newUser);
     return newUser;
+  }
+
+  // In-memory token revocation registry
+  // TODO: Replace with Redis client (e.g., redisClient.sAdd / sIsMember or key-expiration)
+  // once Redis/Mongo infrastructure migration is completed by DB teammate.
+  revokeToken(userId, tokenVersion) {
+    if (userId && tokenVersion !== undefined) {
+      if (!this.revokedTokens) this.revokedTokens = new Set();
+      this.revokedTokens.add(`${userId}:${tokenVersion}`);
+    }
+  }
+
+  isTokenRevoked(userId, tokenVersion) {
+    if (!this.revokedTokens) return false;
+    return this.revokedTokens.has(`${userId}:${tokenVersion}`);
+  }
+
+  incrementTokenVersion(userId) {
+    const user = this.findUserById(userId);
+    if (user) {
+      this.revokeToken(user.id, user.tokenVersion || 0);
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      return user.tokenVersion;
+    }
+    return null;
   }
 
   getProviders(filters = {}) {

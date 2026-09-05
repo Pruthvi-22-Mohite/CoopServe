@@ -3,10 +3,45 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000
 class ApiService {
   constructor() {
     this.baseUrl = API_BASE_URL;
+    this.token = localStorage.getItem('coopserve_token') || null;
+    this.tokenListeners = [];
+    this.refreshPromise = null;
+    this.onAuthFailure = null;
+  }
+
+  setToken(token) {
+    this.token = token;
+    if (token) {
+      localStorage.setItem('coopserve_token', token);
+    } else {
+      localStorage.removeItem('coopserve_token');
+    }
+    this.tokenListeners.forEach(fn => {
+      try { fn(token); } catch (err) { console.error(err); }
+    });
+  }
+
+  clearToken() {
+    this.token = null;
+    localStorage.removeItem('coopserve_token');
+    this.tokenListeners.forEach(fn => {
+      try { fn(null); } catch (err) { console.error(err); }
+    });
+  }
+
+  onTokenChange(callback) {
+    this.tokenListeners.push(callback);
+    return () => {
+      this.tokenListeners = this.tokenListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  setOnAuthFailure(callback) {
+    this.onAuthFailure = callback;
   }
 
   getHeaders() {
-    const token = localStorage.getItem('coopserve_token');
+    const token = this.token || localStorage.getItem('coopserve_token');
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -17,10 +52,59 @@ class ApiService {
     return headers;
   }
 
-  async request(endpoint, options = {}) {
+  async refreshToken() {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.token) {
+          throw new Error(data.message || 'Session refresh failed');
+        }
+
+        this.setToken(data.token);
+        return data;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  async logout() {
+    try {
+      await fetch(`${this.baseUrl}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+    } catch (err) {
+      console.warn('Logout network notification failed:', err.message);
+    } finally {
+      this.clearToken();
+    }
+  }
+
+  async request(endpoint, options = {}, isRetry = false) {
     const url = `${this.baseUrl}${endpoint}`;
     const config = {
       ...options,
+      credentials: 'include',
       headers: {
         ...this.getHeaders(),
         ...options.headers,
@@ -29,6 +113,30 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
+
+      // Handle 401 with silent token refresh once (excluding login/register/refresh itself)
+      if (
+        response.status === 401 &&
+        !isRetry &&
+        endpoint !== '/auth/login' &&
+        endpoint !== '/auth/refresh' &&
+        endpoint !== '/auth/register'
+      ) {
+        try {
+          const refreshed = await this.refreshToken();
+          if (refreshed?.token) {
+            return await this.request(endpoint, options, true);
+          }
+        } catch (refreshErr) {
+          this.clearToken();
+          if (this.onAuthFailure) {
+            this.onAuthFailure();
+          }
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || 'Session expired. Please log in again.');
+        }
+      }
+
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {

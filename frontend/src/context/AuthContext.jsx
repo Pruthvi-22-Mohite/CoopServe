@@ -10,9 +10,22 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const { showToast } = useToast();
 
-  // Load user profile on mount if token exists
+  // Sync token state whenever ApiService updates it
+  useEffect(() => {
+    const unsubscribe = api.onTokenChange((newToken) => {
+      setToken(newToken);
+    });
+    api.setOnAuthFailure(() => {
+      setUser(null);
+      setToken(null);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Restore session on mount: check access token or silently use httpOnly refresh cookie
   useEffect(() => {
     const initializeAuth = async () => {
+      // 1. Try restoring with existing access token if available
       const storedToken = localStorage.getItem('coopserve_token');
       if (storedToken) {
         try {
@@ -23,11 +36,28 @@ export const AuthProvider = ({ children }) => {
             return;
           }
         } catch (err) {
-          console.warn('Session restoration failed:', err.message);
+          console.warn('Access token expired, attempting silent cookie refresh:', err.message);
         }
       }
 
-      // Default demo customer user
+      // 2. Silently attempt re-authentication via httpOnly refresh cookie
+      try {
+        const refreshRes = await api.refreshToken();
+        if (refreshRes?.token) {
+          api.setToken(refreshRes.token);
+          setToken(refreshRes.token);
+          const meRes = await api.getMe();
+          if (meRes.success && meRes.user) {
+            setUser(meRes.user);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        // No valid refresh cookie present
+      }
+
+      // 3. Fallback to default demo customer user for initial demo exploration
       const defaultDemoCustomer = {
         id: 'usr_customer_demo',
         name: 'Ananya Sharma',
@@ -41,7 +71,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const demoRes = await api.demoLogin('CUSTOMER');
         if (demoRes.success && demoRes.user) {
-          localStorage.setItem('coopserve_token', demoRes.token);
+          api.setToken(demoRes.token);
           setToken(demoRes.token);
           setUser(demoRes.user);
         } else {
@@ -62,7 +92,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.login(email, password);
       if (res.success) {
-        localStorage.setItem('coopserve_token', res.token);
+        api.setToken(res.token);
         setToken(res.token);
         setUser(res.user);
         showToast(`Welcome back, ${res.user.name}!`, 'success');
@@ -82,7 +112,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.demoLogin(role);
       if (res.success) {
-        localStorage.setItem('coopserve_token', res.token);
+        api.setToken(res.token);
         setToken(res.token);
         setUser(res.user);
         if (notify) {
@@ -140,7 +170,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.register(userData);
       if (res.success) {
-        localStorage.setItem('coopserve_token', res.token);
+        api.setToken(res.token);
         setToken(res.token);
         setUser(res.user);
         showToast(`Registration successful! Welcome to CoopServe, ${res.user.name}.`, 'success');
@@ -155,8 +185,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('coopserve_token');
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (err) {
+      console.warn('Logout error:', err);
+    }
+    api.clearToken();
     setToken(null);
     setUser(null);
     showToast('Logged out successfully', 'info');

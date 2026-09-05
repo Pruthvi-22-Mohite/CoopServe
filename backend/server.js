@@ -18,13 +18,24 @@ import chatRoutes from './src/routes/chatRoutes.js';
 
 dotenv.config();
 
+// Validate critical security environment variables on startup
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set in environment variables — server will not start');
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error('JWT_REFRESH_SECRET is not set in environment variables — server will not start');
+}
+
 const app = express();
 const server = http.createServer(app);
 
 // Socket.IO configuration
+const clientOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: clientOrigin,
+    credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
   }
 });
@@ -36,7 +47,10 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: clientOrigin,
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 
