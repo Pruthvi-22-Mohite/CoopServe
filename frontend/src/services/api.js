@@ -171,6 +171,24 @@ class ApiService {
     });
   }
 
+  forgotPassword(email) {
+    return this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  resetPassword(token, newPassword) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    });
+  }
+
+  getLocations() {
+    return this.request('/locations');
+  }
+
   getMe() {
     return this.request('/auth/me');
   }

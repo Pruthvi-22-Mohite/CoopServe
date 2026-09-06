@@ -103,7 +103,7 @@ export const ProviderProfile = () => {
                   {provider.coopMemberId || 'COOP-MH-2024-001'}
                 </Badge>
                 <Badge variant="protected" size="sm">
-                  88% Direct Payout
+                  90% Direct Payout
                 </Badge>
               </div>
             </div>

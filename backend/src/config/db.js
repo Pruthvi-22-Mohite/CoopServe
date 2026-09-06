@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import User from '../models/User.js';
+import { DEMO_ACCOUNTS } from './constants.js';
 
 export const connectDB = async () => {
   const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
@@ -13,6 +15,19 @@ export const connectDB = async () => {
       serverSelectionTimeoutMS: 5000
     });
     console.log(`MongoDB connected successfully: ${conn.connection.host}`);
+
+    // Seed demo accounts if not already present in MongoDB
+    try {
+      for (const acc of DEMO_ACCOUNTS) {
+        const exists = await User.findOne({ $or: [{ id: acc.id }, { email: acc.email }] });
+        if (!exists) {
+          await User.create({ ...acc, tokenVersion: 0, isDemoAccount: true });
+        }
+      }
+    } catch (seedErr) {
+      console.warn('[MongoDB] Demo accounts seed note:', seedErr.message);
+    }
+
     return conn;
   } catch (error) {
     // Sanitize any credentials from error messages before logging

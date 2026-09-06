@@ -65,3 +65,40 @@ export const SERVICE_CATEGORIES = [
   { id: 'appliance', name: 'Appliance Repair', icon: 'Tv', count: 20, avgPrice: 399 },
   { id: 'community', name: 'Community Care & Assistance', icon: 'HeartHandshake', count: 9, avgPrice: 249 }
 ];
+
+export const PUNE_NEIGHBOURHOODS = [
+  'Kothrud',
+  'Shivajinagar',
+  'Baner',
+  'Aundh',
+  'Hinjewadi',
+  'Kharadi',
+  'Viman Nagar',
+  'Hadapsar',
+  'Wakad',
+  'Camp',
+  'Deccan Gymkhana',
+  'Kalyani Nagar',
+  'Bavdhan',
+  'Pashan',
+  'Karve Nagar'
+];
+
+export const SUPPORTED_LOCATIONS = {
+  states: [
+    { code: 'MH', name: 'Maharashtra', enabled: true },
+    { code: 'KA', name: 'Karnataka', enabled: false },
+    { code: 'DL', name: 'Delhi NCR', enabled: false },
+    { code: 'GJ', name: 'Gujarat', enabled: false }
+  ],
+  cities: {
+    MH: [
+      { id: 'pune', name: 'Pune', enabled: true },
+      { id: 'mumbai', name: 'Mumbai', enabled: false },
+      { id: 'nagpur', name: 'Nagpur', enabled: false }
+    ]
+  },
+  neighbourhoods: {
+    pune: PUNE_NEIGHBOURHOODS
+  }
+};

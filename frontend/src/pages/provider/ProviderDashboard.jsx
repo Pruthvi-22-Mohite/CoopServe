@@ -137,7 +137,7 @@ export const ProviderDashboard = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-white uppercase">CoopServe Trust Score</p>
-            <p className="text-[11px] text-emerald-300 font-medium">88% Direct Net Payout Active</p>
+            <p className="text-[11px] text-emerald-300 font-medium">90% Direct Net Payout Active</p>
           </div>
         </div>
       </div>

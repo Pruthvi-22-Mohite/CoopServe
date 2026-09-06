@@ -50,6 +50,26 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'Pune, MH'
   },
+  state: {
+    type: String,
+    default: 'Maharashtra'
+  },
+  city: {
+    type: String,
+    default: 'Pune'
+  },
+  neighbourhood: {
+    type: String,
+    default: ''
+  },
+  lat: {
+    type: Number,
+    default: null
+  },
+  lng: {
+    type: Number,
+    default: null
+  },
   isDemoAccount: {
     type: Boolean,
     default: false,
@@ -58,6 +78,19 @@ const userSchema = new mongoose.Schema({
   tokenVersion: {
     type: Number,
     default: 0
+  },
+  resetPasswordToken: {
+    type: String,
+    default: null,
+    index: true
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null
+  },
+  trustedContact: {
+    name: { type: String, default: '' },
+    phone: { type: String, default: '' }
   },
   rewardsPoints: {
     type: Number,
@@ -69,6 +102,10 @@ const userSchema = new mongoose.Schema({
   },
   // Service provider profile extension fields when role === 'SERVICE_PROVIDER'
   skill: {
+    type: String,
+    default: ''
+  },
+  customSkill: {
     type: String,
     default: ''
   },

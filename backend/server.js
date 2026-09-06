@@ -15,6 +15,7 @@ import providerModuleRoutes from './src/routes/providerModuleRoutes.js';
 import cooperativeRoutes from './src/routes/cooperativeRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import chatRoutes from './src/routes/chatRoutes.js';
+import { getLocations } from './src/controllers/authController.js';
 
 dotenv.config();
 
@@ -63,6 +64,7 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.get('/api/locations', getLocations);
 app.use('/api/services', serviceRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/bookings', bookingRoutes);

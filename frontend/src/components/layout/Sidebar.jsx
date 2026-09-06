@@ -39,7 +39,7 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
   const providerLinks = [
     { to: '/provider/dashboard', label: 'Worker Dashboard', icon: LayoutDashboard },
     { to: '/provider/jobs', label: 'Assigned Jobs', icon: Briefcase },
-    { to: '/provider/earnings', label: 'Net Earnings (88%)', icon: IndianRupee },
+    { to: '/provider/earnings', label: 'Net Earnings (90%)', icon: IndianRupee },
     { to: '/provider/availability', label: 'Duty & Localities', icon: Clock },
     { to: '/provider/history', label: 'Verified Work Record', icon: Award },
     { to: '/provider/reviews', label: 'Ratings & Reviews', icon: Star },

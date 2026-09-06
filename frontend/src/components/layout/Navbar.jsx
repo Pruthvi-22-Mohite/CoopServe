@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAccessibility } from '../../context/AccessibilityContext';
 import { Avatar } from '../common/Avatar';
 import { Badge } from '../common/Badge';
 import {
@@ -14,12 +15,14 @@ import {
   X,
   ExternalLink,
   ChevronDown,
-  Globe
+  Globe,
+  Glasses
 } from 'lucide-react';
 
 export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
   const { user, logout } = useAuth();
   const { language, setLanguage, availableLanguages, t } = useLanguage();
+  const { isElderlyMode, toggleAccessibilityMode } = useAccessibility();
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -97,6 +100,20 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
 
           {/* Right User Actions & Language Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Elderly EZ Mode Accessibility Toggle */}
+            <button
+              onClick={toggleAccessibilityMode}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                isElderlyMode
+                  ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
+                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+              title={isElderlyMode ? "Disable Elderly EZ Mode" : "Enable Elderly EZ Mode (Larger fonts & buttons)"}
+            >
+              <Glasses className={`w-3.5 h-3.5 ${isElderlyMode ? 'text-amber-700' : 'text-emerald-600'}`} />
+              <span className="hidden sm:inline">{isElderlyMode ? 'EZ Mode ON' : 'EZ Mode'}</span>
+            </button>
+
             {/* Language Switcher Selector */}
             <div className="relative">
               <button

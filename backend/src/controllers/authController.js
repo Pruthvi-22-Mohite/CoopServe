@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
-import { DEMO_ACCOUNTS, ROLES } from '../config/constants.js';
+import { DEMO_ACCOUNTS, ROLES, SUPPORTED_LOCATIONS } from '../config/constants.js';
 
 const generateAccessToken = (user) => {
   const userId = user.id || (user._id ? user._id.toString() : '');
@@ -173,16 +173,75 @@ export const demoLogin = async (req, res) => {
 
 export const register = async (req, res) => {
   try {
-    const { name, email, password, role, phone, location, skill } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone,
+      state,
+      city,
+      neighbourhood,
+      location,
+      skill,
+      customSkill,
+      lat,
+      lng,
+      trustedContact
+    } = req.body;
 
-    if (!name || !email || !password || !role) {
+    // 1. Mandatory Field Presence Validation
+    const missingFields = [];
+    if (!name || !name.trim()) missingFields.push('name');
+    if (!email || !email.trim()) missingFields.push('email');
+    if (!password) missingFields.push('password');
+    if (!phone || !phone.trim()) missingFields.push('phone');
+    if (!role || !role.trim()) missingFields.push('role');
+
+    const isProvider = (role === 'SERVICE_PROVIDER' || role === 'PROVIDER');
+    if (isProvider && (!skill || !skill.trim())) {
+      missingFields.push('skill');
+    }
+    if (isProvider && skill === 'Other' && (!customSkill || !customSkill.trim())) {
+      missingFields.push('customSkill');
+    }
+
+    if (missingFields.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, password, and role are required.'
+        message: `Missing required field(s): ${missingFields.join(', ')}`
       });
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    // 2. Email Format Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email address format.'
+      });
+    }
+
+    // 3. Indian Mobile Number Validation (+91 or 91 optional, 10 digits starting 6-9)
+    const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+    const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Indian mobile number. Must be 10 digits starting with 6-9 (optional +91).'
+      });
+    }
+
+    // 4. Password Strength Validation (min 8 chars, at least 1 letter and 1 number)
+    if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long and contain at least one letter and one number.'
+      });
+    }
+
+    // 5. Existing User Check
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser || inMemoryStore.findUserByEmail(email)) {
       return res.status(400).json({
         success: false,
@@ -191,25 +250,42 @@ export const register = async (req, res) => {
     }
 
     // Admin accounts must be created via a separate seeded/protected mechanism, not public signup.
-    // Public registration only ever allows CUSTOMER or SERVICE_PROVIDER, regardless of input role.
-    const mappedRole = (role === 'SERVICE_PROVIDER' || role === 'PROVIDER')
-      ? ROLES.SERVICE_PROVIDER
-      : ROLES.CUSTOMER;
+    const mappedRole = isProvider ? ROLES.SERVICE_PROVIDER : ROLES.CUSTOMER;
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Compute formatted location string
+    const stateVal = state || 'Maharashtra';
+    const cityVal = city || 'Pune';
+    const neighbourhoodVal = neighbourhood ? neighbourhood.trim() : '';
+    const computedLocation = neighbourhoodVal
+      ? `${neighbourhoodVal}, ${cityVal}, ${stateVal}`
+      : (location || `${cityVal}, ${stateVal}`);
+
+    const effectiveSkill = skill === 'Other' && customSkill ? customSkill.trim() : (skill || 'General Services');
+
     const userData = {
-      name,
-      email: email.toLowerCase(),
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
       role: mappedRole,
-      phone: phone || '+91 90000 00000',
-      location: location || 'Pune, MH',
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+      phone: cleanPhone,
+      state: stateVal,
+      city: cityVal,
+      neighbourhood: neighbourhoodVal,
+      location: computedLocation,
+      lat: typeof lat === 'number' ? lat : (lat ? parseFloat(lat) : null),
+      lng: typeof lng === 'number' ? lng : (lng ? parseFloat(lng) : null),
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name.trim())}`,
       isDemoAccount: false,
       tokenVersion: 0,
+      trustedContact: {
+        name: trustedContact?.name ? trustedContact.name.trim() : '',
+        phone: trustedContact?.phone ? trustedContact.phone.trim() : ''
+      },
       ...(mappedRole === ROLES.SERVICE_PROVIDER && {
-        skill: skill || 'General Services',
+        skill: effectiveSkill,
+        customSkill: customSkill ? customSkill.trim() : '',
         trustScore: 85,
         rating: 5.0,
         reviewsCount: 0,
@@ -243,6 +319,7 @@ export const register = async (req, res) => {
       user: userWithoutPassword
     });
   } catch (error) {
+    console.error('Registration error:', error);
     return res.status(500).json({
       success: false,
       message: 'Error registering new account',
@@ -395,5 +472,141 @@ export const getDemoAccounts = async (req, res) => {
   return res.status(200).json({
     success: true,
     demoAccounts: DEMO_ACCOUNTS.map(({ password: _, ...acc }) => acc)
+  });
+};
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address.'
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email address format.'
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user found with this email address.'
+      });
+    }
+
+    // Generate short-lived reset token (15 min expiry)
+    const resetToken = jwt.sign(
+      { id: user.id || user._id.toString(), email: user.email, type: 'pwd_reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const resetLink = `${clientUrl}/reset-password?token=${resetToken}`;
+
+    // Development shortcut: Log password reset link to server console
+    console.log('\n======================================================');
+    console.log(`🔑 [CoopServe Auth] Password Reset Link for ${user.email}:`);
+    console.log(`👉 ${resetLink}`);
+    console.log('======================================================\n');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset instructions generated.',
+      resetToken: process.env.NODE_ENV !== 'production' ? resetToken : undefined,
+      resetLink: process.env.NODE_ENV !== 'production' ? resetLink : undefined
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error processing forgot password request.',
+      error: error.message
+    });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password reset token is required.'
+      });
+    }
+
+    if (!newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password is required.'
+      });
+    }
+
+    // Password strength check: min 8 chars, 1 letter, 1 number
+    if (newPassword.length < 8 || !/[a-zA-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long and contain at least one letter and one number.'
+      });
+    }
+
+    try {
+      jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset token.'
+      });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset token.'
+      });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // Invalidate all active sessions
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully. Please log in with your new password.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error resetting password.',
+      error: error.message
+    });
+  }
+};
+
+export const getLocations = (req, res) => {
+  return res.status(200).json({
+    success: true,
+    locations: SUPPORTED_LOCATIONS
   });
 };
