@@ -115,8 +115,12 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
-  console.log(`🚀 CoopServe Backend Server running on http://localhost:${PORT}`);
-  console.log(`📡 Socket.IO initialized and listening for events`);
-  connectDB();
-});
+const startServer = async () => {
+  await connectDB();
+  server.listen(PORT, () => {
+    console.log(`🚀 CoopServe Backend Server running on http://localhost:${PORT}`);
+    console.log(`📡 Socket.IO initialized and listening for events`);
+  });
+};
+
+startServer();
