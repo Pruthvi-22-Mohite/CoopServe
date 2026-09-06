@@ -1,13 +1,29 @@
+import mongoose from 'mongoose';
+import User from '../models/User.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 
 export const getCustomerProfile = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
-    const user = inMemoryStore.findUserById(userId);
+
+    let user = null;
+    if (mongoose.isValidObjectId(userId)) {
+      user = await User.findOne({ $or: [{ _id: userId }, { id: userId }] });
+    } else {
+      user = await User.findOne({ id: userId });
+    }
+
+    if (!user) {
+      user = inMemoryStore.findUserById(userId);
+    }
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const { password: _, ...cleanUser } = user;
+
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    const { password: _, ...cleanUser } = userObj;
+
     return res.status(200).json({
       success: true,
       profile: {
@@ -32,11 +48,28 @@ export const updateCustomerProfile = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
     const { name, phone, location } = req.body;
-    const updated = inMemoryStore.updateUserProfile(userId, { name, phone, location });
+
+    const filter = mongoose.isValidObjectId(userId)
+      ? { $or: [{ _id: userId }, { id: userId }] }
+      : { id: userId };
+
+    let updated = await User.findOneAndUpdate(
+      filter,
+      { $set: { ...(name && { name }), ...(phone && { phone }), ...(location && { location }) } },
+      { new: true }
+    );
+
+    if (!updated) {
+      updated = inMemoryStore.updateUserProfile(userId, { name, phone, location });
+    }
+
     if (!updated) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const { password: _, ...cleanUser } = updated;
+
+    const userObj = updated.toObject ? updated.toObject() : { ...updated };
+    const { password: _, ...cleanUser } = userObj;
+
     return res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
