@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Provider from '../models/Provider.js';
+import Review from '../models/Review.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { matchProviders } from '../services/matchingEngine.js';
 
@@ -190,9 +191,79 @@ export const getProviderReviews = async (req, res) => {
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
+
+    const providerIdVal = provider.id || (provider._id ? provider._id.toString() : id);
+    let reviews = await Review.find({
+      $or: [
+        { providerId: providerIdVal },
+        { providerId: id },
+        ...(provider._id ? [{ providerId: provider._id.toString() }] : [])
+      ]
+    }).sort({ createdAt: -1 });
+
+    if (!reviews || reviews.length === 0) {
+      reviews = provider.reviews || [];
+    }
+
     return res.status(200).json({
       success: true,
-      reviews: provider.reviews || []
+      reviews
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const addProviderReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customerName, rating, comment, serviceTag, bookingId } = req.body;
+
+    const query = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    let provider = await Provider.findOne(query);
+    if (!provider) {
+      provider = inMemoryStore.getProviderById(id);
+    }
+
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
+    }
+
+    const newReview = await Review.create({
+      providerId: provider.id || id,
+      customerId: req.user?.id || 'usr_customer_demo',
+      customerName: customerName || req.user?.name || 'Verified Customer',
+      bookingId: bookingId || '',
+      rating: Number(rating) || 5,
+      comment: comment || 'Great service!',
+      serviceTag: serviceTag || provider.skill || 'General Service',
+      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    });
+
+    // Update provider embedded reviews and recalculated rating if in MongoDB
+    if (provider.save) {
+      if (!provider.reviews) provider.reviews = [];
+      provider.reviews.unshift({
+        id: newReview.id,
+        customerName: newReview.customerName,
+        rating: newReview.rating,
+        comment: newReview.comment,
+        serviceTag: newReview.serviceTag,
+        date: newReview.date
+      });
+      provider.reviewsCount = (provider.reviewsCount || 0) + 1;
+      const allRatings = provider.reviews.map(r => r.rating);
+      provider.rating = Number((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(2));
+      await provider.save();
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Review submitted successfully',
+      review: newReview
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

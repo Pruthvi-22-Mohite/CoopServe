@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 
 export const getCustomerProfile = async (req, res) => {
@@ -83,7 +84,20 @@ export const updateCustomerProfile = async (req, res) => {
 export const getNotifications = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
-    const notifications = inMemoryStore.getNotifications(userId);
+
+    const mongoFilter = {
+      $or: [
+        { userId },
+        ...(mongoose.isValidObjectId(userId) ? [{ userId: userId.toString() }] : [])
+      ]
+    };
+
+    let notifications = await Notification.find(mongoFilter).sort({ createdAt: -1 });
+
+    if (!notifications || notifications.length === 0) {
+      notifications = inMemoryStore.getNotifications(userId);
+    }
+
     return res.status(200).json({
       success: true,
       notifications,
@@ -97,7 +111,21 @@ export const getNotifications = async (req, res) => {
 export const markNotificationRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const notif = inMemoryStore.markNotificationAsRead(id);
+
+    const filter = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    let notif = await Notification.findOneAndUpdate(
+      filter,
+      { $set: { read: true } },
+      { new: true }
+    );
+
+    if (!notif) {
+      notif = inMemoryStore.markNotificationAsRead(id);
+    }
+
     return res.status(200).json({
       success: true,
       notification: notif

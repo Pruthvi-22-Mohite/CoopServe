@@ -3,6 +3,7 @@ import {
   getProviders,
   getProviderById,
   getProviderReviews,
+  addProviderReview,
   smartMatchProviders
 } from '../controllers/providerController.js';
 
@@ -13,5 +14,6 @@ router.post('/match', smartMatchProviders);
 router.get('/', getProviders);
 router.get('/:id', getProviderById);
 router.get('/:id/reviews', getProviderReviews);
+router.post('/:id/reviews', addProviderReview);
 
 export default router;

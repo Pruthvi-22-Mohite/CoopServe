@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Provider from '../models/Provider.js';
+import Notification from '../models/Notification.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCalculator.js';
 
@@ -189,7 +190,30 @@ export const createBooking = async (req, res) => {
     const plainBooking = newBooking.toObject ? newBooking.toObject() : newBooking;
     inMemoryStore.bookings.unshift(plainBooking);
 
-    // Notifications (in-memory until Phase 5)
+    // Persist notifications to MongoDB
+    try {
+      await Notification.create({
+        id: `notif_${Date.now()}_cust`,
+        userId: newBooking.customerId,
+        title: 'Protected Booking Confirmed!',
+        message: `Your booking for ${newBooking.serviceTitle} is confirmed with ${newBooking.providerName}. ID: ${newBooking.id}`,
+        type: 'BOOKING_CONFIRMED',
+        read: false
+      });
+
+      await Notification.create({
+        id: `notif_${Date.now()}_prov`,
+        userId: newBooking.providerId,
+        title: 'New Service Request Assigned!',
+        message: `New booking for ${newBooking.serviceTitle} from ${newBooking.customerName}. Estimated earnings: ₹${calculatedPricing.workerEarnings}.`,
+        type: 'JOB_REQUEST',
+        read: false
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]', notifErr.message);
+    }
+
+    // Also keep in-memory store in sync
     inMemoryStore.notifications.unshift({
       id: `notif_${Date.now()}_cust`,
       userId: newBooking.customerId,
@@ -342,7 +366,20 @@ export const updateBookingStatus = async (req, res) => {
       }
     }
 
-    // Push notification to customer
+    // Push notification to customer (MongoDB + in-memory sync)
+    try {
+      await Notification.create({
+        id: `notif_${Date.now()}_status`,
+        userId: booking.customerId,
+        title: notificationTitle,
+        message: notificationMessage,
+        type: 'STATUS_UPDATE',
+        read: false
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]', notifErr.message);
+    }
+
     inMemoryStore.notifications.unshift({
       id: `notif_${Date.now()}_status`,
       userId: booking.customerId,
