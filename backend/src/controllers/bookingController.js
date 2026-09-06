@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Provider from '../models/Provider.js';
 import Notification from '../models/Notification.js';
-import { inMemoryStore } from '../store/inMemoryStore.js';
 import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCalculator.js';
 
 export const getBookings = async (req, res) => {
@@ -10,72 +9,57 @@ export const getBookings = async (req, res) => {
     const userId = req.user?.id || 'usr_customer_demo';
     const role = req.user?.role || 'CUSTOMER';
 
-    const mongoCount = await Booking.countDocuments();
+    let mongoFilter = {};
 
-    if (mongoCount > 0) {
-      let mongoFilter = {};
-
-      if (role === 'SERVICE_PROVIDER') {
-        mongoFilter = {
-          $or: [
-            { providerId: userId },
-            { providerId: 'usr_provider_demo' },
-            { providerName: { $regex: 'Rahul', $options: 'i' } }
-          ]
-        };
-        let bookings = await Booking.find(mongoFilter).sort({ createdAt: -1 });
-        if (bookings.length === 0) {
-          bookings = await Booking.find({}).sort({ createdAt: -1 });
-        }
-        return res.status(200).json({
-          success: true,
-          bookings,
-          total: bookings.length
-        });
-      } else if (role === 'ADMIN') {
-        const bookings = await Booking.find({}).sort({ createdAt: -1 });
-        return res.status(200).json({
-          success: true,
-          bookings,
-          total: bookings.length
-        });
-      } else {
-        // Customer
-        mongoFilter = {
-          $or: [
-            { customerId: userId },
-            ...(mongoose.isValidObjectId(userId) ? [{ customerId: userId.toString() }] : [])
-          ]
-        };
-        const bookings = await Booking.find(mongoFilter).sort({ createdAt: -1 });
-        return res.status(200).json({
-          success: true,
-          bookings,
-          total: bookings.length
-        });
-      }
-    }
-
-    // Fallback to in-memory store if MongoDB has no bookings yet
-    let bookings;
     if (role === 'SERVICE_PROVIDER') {
-      bookings = inMemoryStore.bookings.filter(
-        b => b.providerId === userId || b.providerId === 'usr_provider_demo' || b.providerName?.includes('Rahul')
-      );
-      if (bookings.length === 0) {
-        bookings = inMemoryStore.bookings;
-      }
-    } else if (role === 'ADMIN') {
-      bookings = inMemoryStore.bookings;
-    } else {
-      bookings = inMemoryStore.getBookingsByCustomer(userId);
-    }
+      const provider = await Provider.findOne({
+        $or: [
+          { userId },
+          { id: userId },
+          ...(mongoose.isValidObjectId(userId) ? [{ _id: userId }] : [])
+        ]
+      });
 
-    return res.status(200).json({
-      success: true,
-      bookings,
-      total: bookings.length
-    });
+      const providerIds = [userId];
+      if (provider) {
+        if (provider.id && !providerIds.includes(provider.id)) providerIds.push(provider.id);
+        if (provider._id && !providerIds.includes(provider._id.toString())) providerIds.push(provider._id.toString());
+      }
+      if (userId === 'usr_provider_demo' && !providerIds.includes('prov_1')) {
+        providerIds.push('prov_1');
+      }
+
+      const bookings = await Booking.find({
+        $or: providerIds.map(pid => ({ providerId: pid }))
+      }).sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        bookings,
+        total: bookings.length
+      });
+    } else if (role === 'ADMIN') {
+      const bookings = await Booking.find({}).sort({ createdAt: -1 });
+      return res.status(200).json({
+        success: true,
+        bookings,
+        total: bookings.length
+      });
+    } else {
+      // Customer
+      mongoFilter = {
+        $or: [
+          { customerId: userId },
+          ...(mongoose.isValidObjectId(userId) ? [{ customerId: userId.toString() }] : [])
+        ]
+      };
+      const bookings = await Booking.find(mongoFilter).sort({ createdAt: -1 });
+      return res.status(200).json({
+        success: true,
+        bookings,
+        total: bookings.length
+      });
+    }
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -114,34 +98,30 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // Lookup provider in MongoDB first, then in-memory store
+    // Lookup provider in MongoDB
     const providerQuery = mongoose.isValidObjectId(providerId)
       ? { $or: [{ _id: providerId }, { id: providerId }] }
       : { id: providerId };
 
-    let provider = await Provider.findOne(providerQuery);
-    if (!provider) {
-      provider = inMemoryStore.getProviderById(providerId);
-    }
+    const provider = await Provider.findOne(providerQuery);
 
-    const resolvedBasePrice = Number(
+    // Backend pricingCalculator is the single source of truth.
+    // Client values cannot override backend calculated prices.
+    const resolvedBasePrice = Math.max(0, Math.round(Number(
       basePrice ||
-      pricing?.basePrice ||
-      price ||
       provider?.startingPrice ||
       CATEGORY_BASE_PRICES[category || provider?.categories?.[0]] ||
       400
-    );
+    )));
 
     const resolvedDistanceKm = distanceKm !== undefined
       ? Number(distanceKm)
-      : (pricing?.distanceKm !== undefined
-          ? Number(pricing.distanceKm)
-          : (provider?.distanceKm !== undefined ? Number(provider.distanceKm) : 3.2));
+      : (provider?.distanceKm !== undefined ? Number(provider.distanceKm) : 3.2);
 
-    const resolvedExtraCharges = Number(extraCharges !== undefined ? extraCharges : (pricing?.extraCharges || 0));
+    const resolvedExtraCharges = Math.max(0, Math.round(Number(extraCharges || 0)));
 
-    const calculatedPricing = pricing || calculateBookingPrice({
+    // Always calculate authoritative final price on backend using pricingCalculator
+    const calculatedPricing = calculateBookingPrice({
       basePrice: resolvedBasePrice,
       distanceKm: resolvedDistanceKm,
       extraCharges: resolvedExtraCharges
@@ -169,11 +149,11 @@ export const createBooking = async (req, res) => {
       time: time || '11:00 AM',
       address: address || 'Flat 402, Green Meadows, Kothrud, Pune - 411038',
       notes: notes || '',
-      price: price || calculatedPricing.customerTotal || provider?.startingPrice || 400,
-      basePrice: resolvedBasePrice,
-      distanceKm: resolvedDistanceKm,
-      travelFee: travelFee !== undefined ? travelFee : calculatedPricing.travelFee,
-      extraCharges: resolvedExtraCharges,
+      price: calculatedPricing.customerTotal,
+      basePrice: calculatedPricing.basePrice,
+      distanceKm: calculatedPricing.distanceKm,
+      travelFee: calculatedPricing.travelFee,
+      extraCharges: calculatedPricing.extraCharges,
       pricing: calculatedPricing,
       paymentStatus: 'PAID',
       paymentMethod: paymentMethod || 'UPI (Mock)',
@@ -185,10 +165,6 @@ export const createBooking = async (req, res) => {
 
     // Save persistent booking to MongoDB
     const newBooking = await Booking.create(bookingPayload);
-
-    // Keep inMemoryStore in sync for unmigrated components (chat, admin, etc.)
-    const plainBooking = newBooking.toObject ? newBooking.toObject() : newBooking;
-    inMemoryStore.bookings.unshift(plainBooking);
 
     // Persist notifications to MongoDB
     try {
@@ -212,27 +188,6 @@ export const createBooking = async (req, res) => {
     } catch (notifErr) {
       console.warn('[Notification Error]', notifErr.message);
     }
-
-    // Also keep in-memory store in sync
-    inMemoryStore.notifications.unshift({
-      id: `notif_${Date.now()}_cust`,
-      userId: newBooking.customerId,
-      title: 'Protected Booking Confirmed!',
-      message: `Your booking for ${newBooking.serviceTitle} is confirmed with ${newBooking.providerName}. ID: ${newBooking.id}`,
-      type: 'BOOKING_CONFIRMED',
-      read: false,
-      createdAt: new Date().toISOString()
-    });
-
-    inMemoryStore.notifications.unshift({
-      id: `notif_${Date.now()}_prov`,
-      userId: newBooking.providerId,
-      title: 'New Service Request Assigned!',
-      message: `New booking for ${newBooking.serviceTitle} from ${newBooking.customerName}. Estimated earnings: ₹${calculatedPricing.workerEarnings}.`,
-      type: 'JOB_REQUEST',
-      read: false,
-      createdAt: new Date().toISOString()
-    });
 
     if (req.io) {
       req.io.emit('new_booking_created', newBooking);
@@ -281,13 +236,7 @@ export const updateBookingStatus = async (req, res) => {
       ? { $or: [{ _id: id }, { id }] }
       : { id };
 
-    let booking = await Booking.findOne(bookingQuery);
-    let isMongoBooking = true;
-
-    if (!booking) {
-      booking = inMemoryStore.getBookingById(id);
-      isMongoBooking = false;
-    }
+    const booking = await Booking.findOne(bookingQuery);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -318,7 +267,7 @@ export const updateBookingStatus = async (req, res) => {
       notificationMessage = `Your service is complete. 30-day rework warranty is now active under CoopServe Protection.`;
       booking.completedAt = new Date().toISOString();
 
-      // Record verified work history in Mongo Provider and in-memory store
+      // Record verified work history in Mongo Provider
       const providerQuery = mongoose.isValidObjectId(booking.providerId)
         ? { $or: [{ _id: booking.providerId }, { id: booking.providerId }] }
         : { id: booking.providerId };
@@ -337,36 +286,14 @@ export const updateBookingStatus = async (req, res) => {
         });
         await mongoProvider.save();
       }
-
-      const inMemProvider = inMemoryStore.getProviderById(booking.providerId);
-      if (inMemProvider) {
-        inMemProvider.jobsCompleted = (inMemProvider.jobsCompleted || 0) + 1;
-        if (!inMemProvider.workHistory) inMemProvider.workHistory = [];
-        inMemProvider.workHistory.unshift({
-          id: booking.id,
-          customer: booking.customerName,
-          service: booking.serviceTitle,
-          date: booking.date,
-          rating: 5.0,
-          verified: true
-        });
-      }
     } else if (normalizedStatus === 'REJECTED') {
       notificationTitle = 'Pro Unavailable - Auto Reassigning';
       notificationMessage = `Provider was unavailable. CoopServe AI is finding the next best balanced match for you.`;
     }
 
-    if (isMongoBooking) {
-      await booking.save();
-      const inMemBooking = inMemoryStore.getBookingById(booking.id);
-      if (inMemBooking) {
-        inMemBooking.status = normalizedStatus;
-        inMemBooking.updatedAt = booking.updatedAt;
-        if (booking.completedAt) inMemBooking.completedAt = booking.completedAt;
-      }
-    }
+    await booking.save();
 
-    // Push notification to customer (MongoDB + in-memory sync)
+    // Push notification to customer
     try {
       await Notification.create({
         id: `notif_${Date.now()}_status`,
@@ -379,16 +306,6 @@ export const updateBookingStatus = async (req, res) => {
     } catch (notifErr) {
       console.warn('[Notification Error]', notifErr.message);
     }
-
-    inMemoryStore.notifications.unshift({
-      id: `notif_${Date.now()}_status`,
-      userId: booking.customerId,
-      title: notificationTitle,
-      message: notificationMessage,
-      type: 'STATUS_UPDATE',
-      read: false,
-      createdAt: new Date().toISOString()
-    });
 
     if (req.io) {
       req.io.emit('booking_status_changed', { bookingId: booking.id, status: normalizedStatus, booking });
@@ -411,10 +328,7 @@ export const getBookingById = async (req, res) => {
       ? { $or: [{ _id: id }, { id }] }
       : { id };
 
-    let booking = await Booking.findOne(bookingQuery);
-    if (!booking) {
-      booking = inMemoryStore.getBookingById(id);
-    }
+    const booking = await Booking.findOne(bookingQuery);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking record not found' });
@@ -437,13 +351,7 @@ export const cancelBooking = async (req, res) => {
       ? { $or: [{ _id: id }, { id }] }
       : { id };
 
-    let booking = await Booking.findOne(bookingQuery);
-    let isMongoBooking = true;
-
-    if (!booking) {
-      booking = inMemoryStore.getBookingById(id);
-      isMongoBooking = false;
-    }
+    const booking = await Booking.findOne(bookingQuery);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -453,15 +361,7 @@ export const cancelBooking = async (req, res) => {
     booking.cancellationReason = reason || 'Customer requested cancellation';
     booking.cancelledAt = new Date().toISOString();
 
-    if (isMongoBooking) {
-      await booking.save();
-      const inMemBooking = inMemoryStore.getBookingById(booking.id);
-      if (inMemBooking) {
-        inMemBooking.status = 'CANCELLED';
-        inMemBooking.cancellationReason = booking.cancellationReason;
-        inMemBooking.cancelledAt = booking.cancelledAt;
-      }
-    }
+    await booking.save();
 
     if (req.io) {
       req.io.emit('booking_cancelled', booking);
@@ -476,4 +376,3 @@ export const cancelBooking = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
-

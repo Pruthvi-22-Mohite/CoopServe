@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
-import { inMemoryStore } from '../store/inMemoryStore.js';
 
 export const getCustomerProfile = async (req, res) => {
   try {
@@ -12,10 +11,6 @@ export const getCustomerProfile = async (req, res) => {
       user = await User.findOne({ $or: [{ _id: userId }, { id: userId }] });
     } else {
       user = await User.findOne({ id: userId });
-    }
-
-    if (!user) {
-      user = inMemoryStore.findUserById(userId);
     }
 
     if (!user) {
@@ -54,15 +49,11 @@ export const updateCustomerProfile = async (req, res) => {
       ? { $or: [{ _id: userId }, { id: userId }] }
       : { id: userId };
 
-    let updated = await User.findOneAndUpdate(
+    const updated = await User.findOneAndUpdate(
       filter,
       { $set: { ...(name && { name }), ...(phone && { phone }), ...(location && { location }) } },
       { new: true }
     );
-
-    if (!updated) {
-      updated = inMemoryStore.updateUserProfile(userId, { name, phone, location });
-    }
 
     if (!updated) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -92,11 +83,7 @@ export const getNotifications = async (req, res) => {
       ]
     };
 
-    let notifications = await Notification.find(mongoFilter).sort({ createdAt: -1 });
-
-    if (!notifications || notifications.length === 0) {
-      notifications = inMemoryStore.getNotifications(userId);
-    }
+    const notifications = await Notification.find(mongoFilter).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -116,14 +103,14 @@ export const markNotificationRead = async (req, res) => {
       ? { $or: [{ _id: id }, { id }] }
       : { id };
 
-    let notif = await Notification.findOneAndUpdate(
+    const notif = await Notification.findOneAndUpdate(
       filter,
       { $set: { read: true } },
       { new: true }
     );
 
     if (!notif) {
-      notif = inMemoryStore.markNotificationAsRead(id);
+      return res.status(404).json({ success: false, message: 'Notification not found' });
     }
 
     return res.status(200).json({

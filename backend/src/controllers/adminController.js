@@ -1,21 +1,30 @@
-import { inMemoryStore } from '../store/inMemoryStore.js';
+import mongoose from 'mongoose';
+import User from '../models/User.js';
+import Provider from '../models/Provider.js';
+import Booking from '../models/Booking.js';
 import { matchProviders } from '../services/matchingEngine.js';
 import { generateAIDemandInsights } from '../services/aiInsightsService.js';
 
 export const getAdminDashboardStats = async (req, res) => {
   try {
-    const totalCustomers = 1420;
-    const activeProviders = inMemoryStore.providers.length;
-    const totalBookings = inMemoryStore.bookings.length + 1240;
-    const completedBookings = inMemoryStore.bookings.filter(b => b.status === 'COMPLETED');
-    const cancelledBookings = inMemoryStore.bookings.filter(b => b.status === 'CANCELLED');
+    const customerCount = await User.countDocuments({ role: 'CUSTOMER' });
+    const totalCustomers = 1420 + customerCount;
+
+    const mongoProvidersCount = await Provider.countDocuments({ status: 'Active' });
+    const allProvidersCount = await Provider.countDocuments();
+    const activeProviders = mongoProvidersCount || allProvidersCount;
+
+    const liveBookingsCount = await Booking.countDocuments();
+    const totalBookings = liveBookingsCount + 1240;
+
+    const completedBookings = await Booking.find({ status: 'COMPLETED' });
 
     const liveWorkerEarnings = completedBookings.reduce(
       (sum, b) => sum + (b.pricing?.workerEarnings || 450),
       0
     );
     const livePlatformOps = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.platformOperations || 50),
+      (sum, b) => sum + (b.pricing?.platformOperations || b.pricing?.platformFee || 50),
       0
     );
 
@@ -25,19 +34,21 @@ export const getAdminDashboardStats = async (req, res) => {
     const averageRating = 4.88;
     const providerUtilization = '92%';
 
+    const recentBookings = await Booking.find({}).sort({ createdAt: -1 }).limit(5);
+
     return res.status(200).json({
       success: true,
       stats: {
         totalCustomers,
         activeProviders,
-        todayBookings: inMemoryStore.bookings.length,
+        todayBookings: liveBookingsCount,
         completedServices: totalBookings,
         totalWorkerEarnings,
         platformRevenue,
         providerUtilization,
         averageRating,
         cancellationRate,
-        recentBookings: inMemoryStore.bookings.slice(0, 5),
+        recentBookings,
         revenueTrend: [
           { month: 'Apr', gross: 240000, workerEarnings: 216000, platformOps: 24000 },
           { month: 'May', gross: 290000, workerEarnings: 261000, platformOps: 29000 },
@@ -62,12 +73,17 @@ export const getAdminDashboardStats = async (req, res) => {
 
 export const getAdminProviders = async (req, res) => {
   try {
-    const providers = inMemoryStore.providers.map(p => ({
-      ...p,
-      status: p.status || 'Active',
-      completedJobs: p.jobsCompleted || 50,
-      totalNetEarnings: Math.round((p.jobsCompleted || 50) * (p.startingPrice || 400) * 0.90)
-    }));
+    const providersList = await Provider.find({});
+
+    const providers = providersList.map(p => {
+      const obj = p.toObject ? p.toObject() : p;
+      return {
+        ...obj,
+        status: obj.status || 'Active',
+        completedJobs: obj.jobsCompleted || 0,
+        totalNetEarnings: Math.round((obj.jobsCompleted || 0) * (obj.startingPrice || 400) * 0.90)
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -83,14 +99,22 @@ export const updateProviderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, isVerified } = req.body;
-    const provider = inMemoryStore.getProviderById(id);
+
+    const query = mongoose.isValidObjectId(id) ? { $or: [{ _id: id }, { id }] } : { id };
+    const provider = await Provider.findOneAndUpdate(
+      query,
+      {
+        $set: {
+          ...(status !== undefined && { status }),
+          ...(isVerified !== undefined && { isVerified: Boolean(isVerified) })
+        }
+      },
+      { new: true }
+    );
 
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
-
-    if (status !== undefined) provider.status = status;
-    if (isVerified !== undefined) provider.isVerified = Boolean(isVerified);
 
     return res.status(200).json({
       success: true,
@@ -104,13 +128,25 @@ export const updateProviderStatus = async (req, res) => {
 
 export const getAdminCustomers = async (req, res) => {
   try {
-    const customers = [
-      { id: 'usr_customer_demo', name: 'Ananya Sharma', email: 'customer@coopserve.demo', phone: '+91 98765 43210', location: 'Kothrud, Pune', totalBookings: inMemoryStore.bookings.length, rewardPoints: 450, status: 'Active', joinedDate: '12 Jan 2026' },
-      { id: 'usr_cust_2', name: 'Vikram Mehta', email: 'vikram.mehta@gmail.com', phone: '+91 98230 11992', location: 'Aundh, Pune', totalBookings: 8, rewardPoints: 620, status: 'Active', joinedDate: '04 Feb 2026' },
-      { id: 'usr_cust_3', name: 'Pooja Kulkarni', email: 'pooja.k@outlook.com', phone: '+91 98901 22883', location: 'Shivajinagar, Pune', totalBookings: 5, rewardPoints: 350, status: 'Active', joinedDate: '18 Feb 2026' },
-      { id: 'usr_cust_4', name: 'Sanjay Shinde', email: 'sanjay.shinde@techcorp.in', phone: '+91 98555 44101', location: 'Baner, Pune', totalBookings: 12, rewardPoints: 940, status: 'Active', joinedDate: '02 Mar 2026' },
-      { id: 'usr_cust_5', name: 'Dr. Anita Joshi', email: 'anita.joshi@punehealth.org', phone: '+91 98666 33219', location: 'Deccan, Pune', totalBookings: 6, rewardPoints: 480, status: 'Active', joinedDate: '15 Mar 2026' }
-    ];
+    const dbUsers = await User.find({ role: 'CUSTOMER' });
+
+    const customers = await Promise.all(dbUsers.map(async (u) => {
+      const uId = u.id || u._id.toString();
+      const totalBookings = await Booking.countDocuments({
+        $or: [{ customerId: uId }, ...(u.id ? [{ customerId: u.id }] : [])]
+      });
+      return {
+        id: uId,
+        name: u.name,
+        email: u.email,
+        phone: u.phone || '',
+        location: u.location || '',
+        totalBookings,
+        rewardPoints: u.rewardsPoints || 0,
+        status: 'Active',
+        joinedDate: u.memberSince || (u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))
+      };
+    }));
 
     return res.status(200).json({
       success: true,
@@ -124,31 +160,35 @@ export const getAdminCustomers = async (req, res) => {
 
 export const getAdminMatchingInspection = async (req, res) => {
   try {
-    const activeDispatches = inMemoryStore.bookings.map((b) => {
-      const provider = inMemoryStore.getProviderById(b.providerId) || inMemoryStore.providers[0];
-      const matchResult = matchProviders(inMemoryStore.providers, {
+    const bookings = await Booking.find({}).sort({ createdAt: -1 }).limit(10);
+    const providersDocs = await Provider.find({});
+    const providers = providersDocs.map(p => (p.toObject ? p.toObject() : p));
+
+    const activeDispatches = bookings.map((b) => {
+      const provider = providers.find(p => p.id === b.providerId || p._id?.toString() === b.providerId) || providers[0] || null;
+      const matchResult = providers.length > 0 ? matchProviders(providers, {
         categoryId: b.category,
         serviceTitle: b.serviceTitle
-      });
-      const scoredProv = matchResult.rankedProviders.find(p => p.id === provider.id) || matchResult.topMatch;
+      }) : { rankedProviders: [], topMatch: null };
+      const scoredProv = (provider && matchResult.rankedProviders?.find(p => p.id === provider.id)) || matchResult.topMatch;
 
       return {
         bookingId: b.id,
         serviceTitle: b.serviceTitle,
         category: b.category,
         customerName: b.customerName,
-        assignedProvider: provider.name,
-        providerSkill: provider.skill,
-        matchScore: scoredProv?.matchScore || 94,
+        assignedProvider: provider?.name || 'Assigned Provider',
+        providerSkill: provider?.skill || 'Certified Pro',
+        matchScore: scoredProv?.matchScore || 90,
         scoreBreakdown: scoredProv?.scoreBreakdown || {
-          skillScore: 98,
-          distanceScore: 91,
-          availabilityScore: 100,
-          ratingScore: 96,
+          skillScore: 90,
+          distanceScore: 90,
+          availabilityScore: 90,
+          ratingScore: 90,
           workloadFairnessScore: 85,
-          trustScore: 94
+          trustScore: 90
         },
-        reasons: scoredProv?.reasons || ['Required skill match', 'Available today', 'Fair workload balancing priority']
+        reasons: scoredProv?.reasons || ['Required skill match', 'Fair workload balancing priority']
       };
     });
 
@@ -172,7 +212,8 @@ export const getAdminMatchingInspection = async (req, res) => {
 
 export const getAdminCancellationAndLeakage = async (req, res) => {
   try {
-    const totalBookings = 4890 + inMemoryStore.bookings.length;
+    const liveBookingCount = await Booking.countDocuments();
+    const totalBookings = 4890 + liveBookingCount;
     const totalCancellations = 118;
     const customerCancellations = 78;
     const providerCancellations = 40;
@@ -219,7 +260,12 @@ export const getAdminCancellationAndLeakage = async (req, res) => {
 
 export const getAdminAIInsights = async (req, res) => {
   try {
-    const insights = generateAIDemandInsights(inMemoryStore.providers, inMemoryStore.bookings);
+    const providersDocs = await Provider.find({});
+    const bookingsDocs = await Booking.find({});
+    const providers = providersDocs.map(p => (p.toObject ? p.toObject() : p));
+    const bookings = bookingsDocs.map(b => (b.toObject ? b.toObject() : b));
+
+    const insights = generateAIDemandInsights(providers, bookings);
     return res.status(200).json(insights);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

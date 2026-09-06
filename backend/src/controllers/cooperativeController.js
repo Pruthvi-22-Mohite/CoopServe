@@ -1,10 +1,12 @@
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { calculateWorkloadFairnessScore } from '../services/matchingEngine.js';
 import CooperativeVote from '../models/CooperativeVote.js';
+import Provider from '../models/Provider.js';
+import Booking from '../models/Booking.js';
 
 export const getCooperativeOverview = async (req, res) => {
   try {
-    const completedBookings = inMemoryStore.bookings.filter(b => b.status === 'COMPLETED');
+    const completedBookings = await Booking.find({ status: 'COMPLETED' });
 
     const liveWorkerEarnings = completedBookings.reduce(
       (sum, b) => sum + (b.pricing?.workerEarnings || 450),
@@ -24,16 +26,21 @@ export const getCooperativeOverview = async (req, res) => {
       return acc;
     }, {});
 
+    // Fetch providers from MongoDB
+    const providersList = await Provider.find({});
+    const allBookings = await Booking.find({});
+
     // Build Workload Distribution across providers
-    const workloadDistribution = inMemoryStore.providers.map((prov) => {
-      const provBookings = inMemoryStore.bookings.filter(b => b.providerId === prov.id);
+    const workloadDistribution = providersList.map((prov) => {
+      const provId = prov.id || prov._id?.toString();
+      const provBookings = allBookings.filter(b => b.providerId === provId || b.providerId === prov.id);
       const activeCount = provBookings.filter(b => ['BOOKED', 'PROVIDER_ACCEPTED', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS'].includes(b.status)).length;
       const completedCount = provBookings.filter(b => b.status === 'COMPLETED').length;
 
       // Simulated weekly baseline + live activity
       const simulatedWeeklyBase = prov.weeklyJobsCount !== undefined ? prov.weeklyJobsCount : ((prov.jobsCompleted || 10) % 15) + 4;
       const totalWeeklyJobs = simulatedWeeklyBase + activeCount;
-      const fairnessScore = calculateWorkloadFairnessScore({ ...prov, weeklyJobsCount: totalWeeklyJobs });
+      const fairnessScore = calculateWorkloadFairnessScore({ ...(prov.toObject ? prov.toObject() : prov), weeklyJobsCount: totalWeeklyJobs });
 
       let fairnessTier = 'Balanced Queue';
       if (totalWeeklyJobs <= 7) {
@@ -43,7 +50,7 @@ export const getCooperativeOverview = async (req, res) => {
       }
 
       return {
-        id: prov.id,
+        id: prov.id || prov._id?.toString(),
         name: prov.name,
         skill: prov.skill,
         avatar: prov.avatar,
