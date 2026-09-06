@@ -5,6 +5,24 @@ import Notification from '../models/Notification.js';
 import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCalculator.js';
 import { isUserAuthorizedForBooking } from '../middleware/authMiddleware.js';
 import { matchProviders } from '../services/matchingEngine.js';
+import User from '../models/User.js';
+import { verifyLocationAgainstCustomer } from '../utils/geolocation.js';
+
+const resolveCustomerCoords = async (booking) => {
+  if (!booking?.customerId) {
+    return { latitude: null, longitude: null };
+  }
+
+  const customerQuery = mongoose.isValidObjectId(booking.customerId)
+    ? { $or: [{ _id: booking.customerId }, { id: booking.customerId }] }
+    : { id: booking.customerId };
+
+  const customer = await User.findOne(customerQuery);
+  return {
+    latitude: customer?.lat ?? null,
+    longitude: customer?.lng ?? null
+  };
+};
 
 export const getBookings = async (req, res) => {
   try {
@@ -355,6 +373,19 @@ export const updateBookingStatus = async (req, res) => {
 
     // Standardize ACCEPTED
     const normalizedStatus = status === 'ACCEPTED' ? 'PROVIDER_ACCEPTED' : status;
+
+    if (['IN_PROGRESS', 'COMPLETED'].includes(normalizedStatus)) {
+      const verificationStage = normalizedStatus === 'IN_PROGRESS' ? 'start' : 'completion';
+      const verificationResult = booking.locationVerification?.[verificationStage];
+
+      if (!verificationResult || verificationResult.status !== 'VERIFIED' || verificationResult.distanceMeters == null) {
+        return res.status(400).json({
+          success: false,
+          message: `Geotag verification is required before marking this job as ${normalizedStatus}.`
+        });
+      }
+    }
+
     booking.status = normalizedStatus;
     booking.updatedAt = new Date().toISOString();
 
@@ -523,6 +554,105 @@ export const cancelBooking = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Booking cancelled. Note: Cancellation removes CoopServe Protection guarantee for this job.',
+      booking
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const verifyBookingLocation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { stage, latitude, longitude } = req.body;
+    const normalizedStage = String(stage || '').toLowerCase();
+    const validStages = ['start', 'completion'];
+
+    if (!validStages.includes(normalizedStage)) {
+      return res.status(400).json({
+        success: false,
+        message: "Location verification stage must be either 'start' or 'completion'."
+      });
+    }
+
+    if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude are required to verify a provider location.'
+      });
+    }
+
+    const providerLatitude = Number(latitude);
+    const providerLongitude = Number(longitude);
+
+    if (!Number.isFinite(providerLatitude) || !Number.isFinite(providerLongitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude must be finite numeric values.'
+      });
+    }
+
+    if (providerLatitude < -90 || providerLatitude > 90 || providerLongitude < -180 || providerLongitude > 180) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude must be between -90 and 90, and longitude must be between -180 and 180.'
+      });
+    }
+
+    const bookingQuery = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    const booking = await Booking.findOne(bookingQuery);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const isAuthorized = await isUserAuthorizedForBooking(req.user, booking);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to verify this booking location.'
+      });
+    }
+
+    const { latitude: customerLatitude, longitude: customerLongitude } = await resolveCustomerCoords(booking);
+    const verification = verifyLocationAgainstCustomer({
+      customerLatitude,
+      customerLongitude,
+      providerLatitude,
+      providerLongitude
+    });
+
+    booking.locationVerification = booking.locationVerification || {};
+    booking.locationVerification[normalizedStage] = {
+      latitude: providerLatitude,
+      longitude: providerLongitude,
+      distanceMeters: verification.distanceMeters,
+      status: verification.isVerified ? 'VERIFIED' : 'FAILED',
+      verifiedAt: new Date(),
+      reason: verification.reason
+    };
+
+    const failedVerification = !verification.isVerified;
+    const hasExistingReview = Boolean(booking.reviewRequired);
+    booking.reviewRequired = hasExistingReview || failedVerification;
+
+    if (failedVerification && (!booking.reviewReason || !String(booking.reviewReason).trim())) {
+      booking.reviewReason = `Geotag verification failed during ${normalizedStage}: ${verification.reason}`;
+    }
+
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      verified: verification.isVerified,
+      distanceMeters: verification.distanceMeters,
+      allowedRadiusMeters: verification.allowedRadiusMeters,
+      reason: verification.reason,
+      message: verification.isVerified
+        ? 'Provider location verified within the service radius.'
+        : 'Provider location is outside the allowed service radius and requires admin review.',
       booking
     });
   } catch (err) {

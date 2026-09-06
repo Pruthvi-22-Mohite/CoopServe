@@ -108,6 +108,32 @@ const bookingSchema = new mongoose.Schema({
     default: 'BOOKED',
     index: true
   },
+  reviewRequired: {
+    type: Boolean,
+    default: false
+  },
+  reviewReason: {
+    type: String,
+    default: ''
+  },
+  locationVerification: {
+    start: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+      distanceMeters: { type: Number, default: null },
+      status: { type: String, enum: ['VERIFIED', 'FAILED', 'PENDING'], default: 'PENDING' },
+      verifiedAt: { type: Date, default: null },
+      reason: { type: String, default: '' }
+    },
+    completion: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+      distanceMeters: { type: Number, default: null },
+      status: { type: String, enum: ['VERIFIED', 'FAILED', 'PENDING'], default: 'PENDING' },
+      verifiedAt: { type: Date, default: null },
+      reason: { type: String, default: '' }
+    }
+  },
   price: {
     type: Number
   },

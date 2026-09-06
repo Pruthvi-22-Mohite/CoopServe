@@ -4,7 +4,8 @@ import {
   getBookingById,
   createBooking,
   updateBookingStatus,
-  cancelBooking
+  cancelBooking,
+  verifyBookingLocation
 } from '../controllers/bookingController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 
@@ -13,6 +14,7 @@ const router = express.Router();
 router.get('/', authenticate, getBookings);
 router.post('/', authenticate, createBooking);
 router.get('/:id', authenticate, getBookingById);
+router.post('/:id/verify-location', authenticate, verifyBookingLocation);
 router.patch('/:id/status', authenticate, updateBookingStatus);
 router.put('/:id/status', authenticate, updateBookingStatus);
 router.post('/:id/cancel', authenticate, cancelBooking);

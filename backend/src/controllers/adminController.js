@@ -35,6 +35,7 @@ export const getAdminDashboardStats = async (req, res) => {
     const providerUtilization = '92%';
 
     const recentBookings = await Booking.find({}).sort({ createdAt: -1 }).limit(5);
+    const geoReviewCount = await Booking.countDocuments({ reviewRequired: true });
 
     return res.status(200).json({
       success: true,
@@ -48,6 +49,7 @@ export const getAdminDashboardStats = async (req, res) => {
         providerUtilization,
         averageRating,
         cancellationRate,
+        geoReviewCount,
         recentBookings,
         revenueTrend: [
           { month: 'Apr', gross: 240000, workerEarnings: 216000, platformOps: 24000 },

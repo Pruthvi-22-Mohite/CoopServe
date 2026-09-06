@@ -391,6 +391,13 @@ class ApiService {
   getRatingForBooking(bookingId) {
     return this.request(`/ratings/bookings/${bookingId}`);
   }
+
+  verifyBookingLocation(id, data) {
+    return this.request(`/bookings/${id}/verify-location`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
 }
 
 export const api = new ApiService();
