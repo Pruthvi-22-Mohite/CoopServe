@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import User from '../models/User.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 
-export const authenticate = (req, res, next) => {
+export const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({
@@ -14,7 +16,17 @@ export const authenticate = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = inMemoryStore.findUserById(decoded.id);
+    
+    let user = null;
+    if (mongoose.isValidObjectId(decoded.id)) {
+      user = await User.findOne({ $or: [{ _id: decoded.id }, { id: decoded.id }] });
+    } else {
+      user = await User.findOne({ id: decoded.id });
+    }
+
+    if (!user) {
+      user = inMemoryStore.findUserById(decoded.id);
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -23,7 +35,12 @@ export const authenticate = (req, res, next) => {
       });
     }
 
-    req.user = user;
+    const userObj = user.toObject ? user.toObject() : user;
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    req.user = userObj;
     next();
   } catch (err) {
     return res.status(401).json({

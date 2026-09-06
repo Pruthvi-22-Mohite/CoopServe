@@ -1,14 +1,37 @@
-import { inMemoryStore } from '../store/inMemoryStore.js';
+import mongoose from 'mongoose';
+import Provider from '../models/Provider.js';
+import Booking from '../models/Booking.js';
+
+const findProvider = async (userId) => {
+  const query = mongoose.isValidObjectId(userId)
+    ? { $or: [{ _id: userId }, { id: userId }, { userId }] }
+    : { $or: [{ id: userId }, { userId }] };
+  let provider = await Provider.findOne(query);
+  if (!provider) {
+    provider = await Provider.findOne({ id: 'usr_provider_demo' }) || await Provider.findOne({});
+  }
+  return provider;
+};
 
 export const getProviderDashboardStats = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_provider_demo';
-    const provider = inMemoryStore.getProviderById(userId) || inMemoryStore.providers[0];
+    const provider = await findProvider(userId);
+
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Provider profile not found' });
+    }
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const providerBookings = inMemoryStore.bookings.filter(
-      b => b.providerId === provider.id || b.providerId === userId || b.providerId === 'usr_provider_demo'
-    );
+    const providerIdVal = provider.id || (provider._id ? provider._id.toString() : userId);
+    const providerIds = [providerIdVal, userId];
+    if (provider.id && !providerIds.includes(provider.id)) providerIds.push(provider.id);
+    if (provider._id && !providerIds.includes(provider._id.toString())) providerIds.push(provider._id.toString());
+    if (userId === 'usr_provider_demo' && !providerIds.includes('prov_1')) providerIds.push('prov_1');
+
+    const providerBookings = await Booking.find({
+      $or: providerIds.map(pid => ({ providerId: pid }))
+    }).sort({ createdAt: -1 });
 
     const pendingRequests = providerBookings.filter(b => b.status === 'BOOKED');
     const todayJobs = providerBookings.filter(b => b.date === todayStr && b.status !== 'CANCELLED');
@@ -74,12 +97,30 @@ export const getProviderDashboardStats = async (req, res) => {
 export const getProviderEarnings = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_provider_demo';
-    const provider = inMemoryStore.getProviderById(userId) || inMemoryStore.providers[0];
+    const provider = await findProvider(userId);
 
-    const completedBookings = inMemoryStore.bookings.filter(b => b.status === 'COMPLETED');
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Provider profile not found' });
+    }
+
+    const providerIdVal = provider.id || (provider._id ? provider._id.toString() : userId);
+    const providerIds = [providerIdVal, userId];
+    if (provider.id && !providerIds.includes(provider.id)) providerIds.push(provider.id);
+    if (provider._id && !providerIds.includes(provider._id.toString())) providerIds.push(provider._id.toString());
+    if (userId === 'usr_provider_demo' && !providerIds.includes('prov_1')) providerIds.push('prov_1');
+
+    const completedBookings = await Booking.find({
+      $and: [
+        { status: 'COMPLETED' },
+        { $or: providerIds.map(pid => ({ providerId: pid })) }
+      ]
+    });
+    const allBookings = await Booking.find({
+      $or: providerIds.map(pid => ({ providerId: pid }))
+    }).sort({ createdAt: -1 });
 
     const grossPayments = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.customerPayment || 500),
+      (sum, b) => sum + (b.pricing?.customerPayment || b.pricing?.customerTotal || 500),
       39000
     );
     const workerNetEarnings = completedBookings.reduce(
@@ -87,7 +128,7 @@ export const getProviderEarnings = async (req, res) => {
       35100
     );
     const platformOps = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.platformOperations || 50),
+      (sum, b) => sum + (b.pricing?.platformOperations || b.pricing?.platformFee || 50),
       3900
     );
 
@@ -105,7 +146,7 @@ export const getProviderEarnings = async (req, res) => {
           ifscCode: 'HDFC0001234',
           nextPayoutDate: 'This Friday (Auto-settlement)'
         },
-        breakdownList: inMemoryStore.bookings.map(b => ({
+        breakdownList: allBookings.map(b => ({
           bookingId: b.id,
           date: b.date,
           service: b.serviceTitle,
@@ -128,7 +169,11 @@ export const getProviderEarnings = async (req, res) => {
 export const getProviderAvailability = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_provider_demo';
-    const provider = inMemoryStore.getProviderById(userId) || inMemoryStore.providers[0];
+    const provider = await findProvider(userId);
+
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Provider profile not found' });
+    }
 
     return res.status(200).json({
       success: true,
@@ -149,11 +194,24 @@ export const updateProviderAvailability = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_provider_demo';
     const { isAvailable, availabilityStatus, serviceAreas } = req.body;
-    const provider = inMemoryStore.getProviderById(userId) || inMemoryStore.providers[0];
+
+    const query = mongoose.isValidObjectId(userId)
+      ? { $or: [{ _id: userId }, { id: userId }, { userId }] }
+      : { $or: [{ id: userId }, { userId }] };
+
+    let provider = await Provider.findOne(query);
+    if (!provider) {
+      provider = await Provider.findOne({ id: 'usr_provider_demo' });
+    }
+
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
+    }
 
     if (isAvailable !== undefined) provider.isAvailable = Boolean(isAvailable);
     if (availabilityStatus) provider.availabilityStatus = availabilityStatus;
     if (serviceAreas) provider.serviceAreas = serviceAreas;
+    await provider.save();
 
     return res.status(200).json({
       success: true,

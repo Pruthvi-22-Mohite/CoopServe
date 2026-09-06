@@ -1,19 +1,23 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
+import User from '../models/User.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { DEMO_ACCOUNTS, ROLES } from '../config/constants.js';
 
 const generateAccessToken = (user) => {
+  const userId = user.id || (user._id ? user._id.toString() : '');
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: userId, email: user.email, role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: '15m' }
   );
 };
 
 const generateRefreshToken = (user) => {
+  const userId = user.id || (user._id ? user._id.toString() : '');
   return jwt.sign(
-    { id: user.id, tokenVersion: user.tokenVersion || 0 },
+    { id: userId, tokenVersion: user.tokenVersion || 0 },
     process.env.JWT_REFRESH_SECRET,
     { expiresIn: '7d' }
   );
@@ -58,7 +62,10 @@ export const login = async (req, res) => {
       });
     }
 
-    const user = inMemoryStore.findUserByEmail(email);
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      user = inMemoryStore.findUserByEmail(email);
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -69,8 +76,8 @@ export const login = async (req, res) => {
 
     // Explicit demo vs registered account verification
     if (user.isDemoAccount) {
-      // For published demo accounts, allow known demo passwords without bcrypt hashing
-      const isDemoMatch = user.password === password || password === 'demo123' || password === 'password123';
+      const isBcryptMatch = await bcrypt.compare(password, user.password).catch(() => false);
+      const isDemoMatch = user.password === password || password === 'demo123' || password === 'password123' || isBcryptMatch;
       if (!isDemoMatch) {
         return res.status(401).json({
           success: false,
@@ -88,11 +95,16 @@ export const login = async (req, res) => {
       }
     }
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    const accessToken = generateAccessToken(userObj);
+    const refreshToken = generateRefreshToken(userObj);
     setRefreshTokenCookie(res, refreshToken);
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     return res.status(200).json({
       success: true,
@@ -121,7 +133,10 @@ export const demoLogin = async (req, res) => {
       targetRole = ROLES.CUSTOMER;
     }
 
-    const demoUser = inMemoryStore.users.find(u => u.role === targetRole);
+    let demoUser = await User.findOne({ role: targetRole, isDemoAccount: true });
+    if (!demoUser) {
+      demoUser = inMemoryStore.users.find(u => u.role === targetRole);
+    }
 
     if (!demoUser) {
       return res.status(404).json({
@@ -130,11 +145,16 @@ export const demoLogin = async (req, res) => {
       });
     }
 
-    const accessToken = generateAccessToken(demoUser);
-    const refreshToken = generateRefreshToken(demoUser);
+    const userObj = demoUser.toObject ? demoUser.toObject() : { ...demoUser };
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    const accessToken = generateAccessToken(userObj);
+    const refreshToken = generateRefreshToken(userObj);
     setRefreshTokenCookie(res, refreshToken);
 
-    const { password: _, ...userWithoutPassword } = demoUser;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     return res.status(200).json({
       success: true,
@@ -162,8 +182,8 @@ export const register = async (req, res) => {
       });
     }
 
-    const existingUser = inMemoryStore.findUserByEmail(email);
-    if (existingUser) {
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser || inMemoryStore.findUserByEmail(email)) {
       return res.status(400).json({
         success: false,
         message: 'A user with this email already exists.'
@@ -180,12 +200,14 @@ export const register = async (req, res) => {
 
     const userData = {
       name,
-      email,
+      email: email.toLowerCase(),
       password: hashedPassword,
       role: mappedRole,
       phone: phone || '+91 90000 00000',
       location: location || 'Pune, MH',
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+      isDemoAccount: false,
+      tokenVersion: 0,
       ...(mappedRole === ROLES.SERVICE_PROVIDER && {
         skill: skill || 'General Services',
         trustScore: 85,
@@ -202,12 +224,17 @@ export const register = async (req, res) => {
       })
     };
 
-    const newUser = inMemoryStore.addUser(userData);
-    const accessToken = generateAccessToken(newUser);
-    const refreshToken = generateRefreshToken(newUser);
+    const newUser = await User.create(userData);
+    const userObj = newUser.toObject();
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    const accessToken = generateAccessToken(userObj);
+    const refreshToken = generateRefreshToken(userObj);
     setRefreshTokenCookie(res, refreshToken);
 
-    const { password: _, ...userWithoutPassword } = newUser;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     return res.status(201).json({
       success: true,
@@ -246,7 +273,17 @@ export const refresh = async (req, res) => {
       });
     }
 
-    const user = inMemoryStore.findUserById(decoded.id);
+    let user = null;
+    if (mongoose.isValidObjectId(decoded.id)) {
+      user = await User.findOne({ $or: [{ _id: decoded.id }, { id: decoded.id }] });
+    } else {
+      user = await User.findOne({ id: decoded.id });
+    }
+
+    if (!user) {
+      user = inMemoryStore.findUserById(decoded.id);
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -254,11 +291,13 @@ export const refresh = async (req, res) => {
       });
     }
 
+    const userIdStr = user.id || user._id.toString();
+
     // Revocation and tokenVersion check
     if (
       decoded.tokenVersion === undefined ||
       decoded.tokenVersion !== user.tokenVersion ||
-      inMemoryStore.isTokenRevoked(user.id, decoded.tokenVersion)
+      inMemoryStore.isTokenRevoked(userIdStr, decoded.tokenVersion)
     ) {
       return res.status(401).json({
         success: false,
@@ -267,12 +306,24 @@ export const refresh = async (req, res) => {
     }
 
     // Invalidate old token by incrementing tokenVersion & issue new rotated tokens
-    inMemoryStore.incrementTokenVersion(user.id);
-    const newAccessToken = generateAccessToken(user);
-    const newRefreshToken = generateRefreshToken(user);
+    inMemoryStore.revokeToken(userIdStr, decoded.tokenVersion);
+    inMemoryStore.incrementTokenVersion(userIdStr);
+
+    if (user.save) {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      await user.save();
+    }
+
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    const newAccessToken = generateAccessToken(userObj);
+    const newRefreshToken = generateRefreshToken(userObj);
     setRefreshTokenCookie(res, newRefreshToken);
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     return res.status(200).json({
       success: true,
@@ -296,6 +347,11 @@ export const logout = async (req, res) => {
       try {
         const decoded = jwt.verify(rawRefreshToken, process.env.JWT_REFRESH_SECRET);
         if (decoded?.id) {
+          const isMongoId = mongoose.isValidObjectId(decoded.id);
+          const filter = isMongoId
+            ? { $or: [{ _id: decoded.id }, { id: decoded.id }] }
+            : { id: decoded.id };
+          await User.findOneAndUpdate(filter, { $inc: { tokenVersion: 1 } });
           inMemoryStore.incrementTokenVersion(decoded.id);
         }
       } catch {

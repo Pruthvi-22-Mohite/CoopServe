@@ -1,13 +1,25 @@
-import { inMemoryStore } from '../store/inMemoryStore.js';
+import mongoose from 'mongoose';
+import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 
 export const getCustomerProfile = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
-    const user = inMemoryStore.findUserById(userId);
+
+    let user = null;
+    if (mongoose.isValidObjectId(userId)) {
+      user = await User.findOne({ $or: [{ _id: userId }, { id: userId }] });
+    } else {
+      user = await User.findOne({ id: userId });
+    }
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const { password: _, ...cleanUser } = user;
+
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    const { password: _, ...cleanUser } = userObj;
+
     return res.status(200).json({
       success: true,
       profile: {
@@ -32,11 +44,24 @@ export const updateCustomerProfile = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
     const { name, phone, location } = req.body;
-    const updated = inMemoryStore.updateUserProfile(userId, { name, phone, location });
+
+    const filter = mongoose.isValidObjectId(userId)
+      ? { $or: [{ _id: userId }, { id: userId }] }
+      : { id: userId };
+
+    const updated = await User.findOneAndUpdate(
+      filter,
+      { $set: { ...(name && { name }), ...(phone && { phone }), ...(location && { location }) } },
+      { new: true }
+    );
+
     if (!updated) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const { password: _, ...cleanUser } = updated;
+
+    const userObj = updated.toObject ? updated.toObject() : { ...updated };
+    const { password: _, ...cleanUser } = userObj;
+
     return res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
@@ -50,7 +75,16 @@ export const updateCustomerProfile = async (req, res) => {
 export const getNotifications = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_customer_demo';
-    const notifications = inMemoryStore.getNotifications(userId);
+
+    const mongoFilter = {
+      $or: [
+        { userId },
+        ...(mongoose.isValidObjectId(userId) ? [{ userId: userId.toString() }] : [])
+      ]
+    };
+
+    const notifications = await Notification.find(mongoFilter).sort({ createdAt: -1 });
+
     return res.status(200).json({
       success: true,
       notifications,
@@ -64,7 +98,21 @@ export const getNotifications = async (req, res) => {
 export const markNotificationRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const notif = inMemoryStore.markNotificationAsRead(id);
+
+    const filter = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    const notif = await Notification.findOneAndUpdate(
+      filter,
+      { $set: { read: true } },
+      { new: true }
+    );
+
+    if (!notif) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
     return res.status(200).json({
       success: true,
       notification: notif
