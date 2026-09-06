@@ -202,7 +202,7 @@ export const ServicesDirectory = () => {
                     onClick={() => handleTriggerSmartMatch(srv)}
                     leftIcon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
                   >
-                    AI Match
+                    Instant Match
                   </Button>
                   <Button
                     variant="outline"
@@ -226,6 +226,7 @@ export const ServicesDirectory = () => {
         category={matchingService?.categoryId}
         serviceTitle={matchingService?.title}
         initialServiceId={matchingService?.id}
+        initialService={matchingService}
       />
     </div>
   );
