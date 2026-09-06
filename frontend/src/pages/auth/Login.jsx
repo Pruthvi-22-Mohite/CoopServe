@@ -53,7 +53,7 @@ export const Login = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-slate to-coop-dark flex flex-col justify-center px-4 py-8 sm:px-6 lg:px-8">
       <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-stretch">
-        
+
         {/* Left Panel: Asymmetric Rich Hero Section (~58% Width) */}
         <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-10 lg:p-12 rounded-3xl bg-slate-900/60 backdrop-blur-xl border border-white/10 text-white shadow-2xl relative overflow-hidden">
           {/* Subtle Ambient Glow Shapes */}
@@ -149,7 +149,7 @@ export const Login = () => {
         {/* Right Panel: Compact, High-Impact Sign-In Card (~42% Width) */}
         <div className="lg:col-span-5 flex flex-col justify-center">
           <Card className="shadow-2xl border-white/20 bg-white/95 backdrop-blur-xl p-6 sm:p-8 rounded-3xl relative">
-            
+
             {/* Header with Title and Mode Indicator */}
             <div className="flex items-start justify-between gap-2 mb-5">
               <div>
@@ -162,11 +162,10 @@ export const Login = () => {
               <button
                 type="button"
                 onClick={toggleAccessibilityMode}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all ${
-                  isElderlyMode
-                    ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all ${isElderlyMode
+                  ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
                 title="Toggle larger fonts, bigger buttons, and simplified layout"
               >
                 <Glasses className={`w-3.5 h-3.5 ${isElderlyMode ? 'text-amber-700' : 'text-slate-500'}`} />
@@ -174,56 +173,58 @@ export const Login = () => {
               </button>
             </div>
 
-            {/* 1-Click Demo Logins */}
-            <div className="space-y-2 mb-5">
-              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5 text-amber-500" /> Fast Role Access
-                </span>
-                <span className="text-[10px] text-slate-400 font-normal">No password needed</span>
+            {/* 1-Click Demo Logins — hidden in judge builds, toggled via VITE_SHOW_DEMO_ACCESS */}
+            {import.meta.env.VITE_SHOW_DEMO_ACCESS === 'true' && (
+              <div className="space-y-2 mb-5">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-amber-500" /> Fast Role Access
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">No password needed</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDemoClick('CUSTOMER', '/customer/dashboard')}
+                    disabled={isLoading}
+                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <div className="flex items-center gap-1 text-emerald-800 font-bold text-xs">
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>Customer</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-700 mt-0.5 truncate">Ananya S.</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDemoClick('SERVICE_PROVIDER', '/provider/dashboard')}
+                    disabled={isLoading}
+                    className="p-2.5 rounded-xl border border-teal-200 bg-teal-50/70 hover:bg-teal-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <div className="flex items-center gap-1 text-teal-800 font-bold text-xs">
+                      <Wrench className="w-3.5 h-3.5 shrink-0" />
+                      <span>Worker</span>
+                    </div>
+                    <p className="text-[10px] text-teal-700 mt-0.5 truncate">Rahul S.</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDemoClick('ADMIN', '/admin/dashboard')}
+                    disabled={isLoading}
+                    className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <div className="flex items-center gap-1 text-rose-800 font-bold text-xs">
+                      <Shield className="w-3.5 h-3.5 shrink-0" />
+                      <span>Admin</span>
+                    </div>
+                    <p className="text-[10px] text-rose-700 mt-0.5 truncate">Operations</p>
+                  </button>
+                </div>
               </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDemoClick('CUSTOMER', '/customer/dashboard')}
-                  disabled={isLoading}
-                  className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-1 text-emerald-800 font-bold text-xs">
-                    <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                    <span>Customer</span>
-                  </div>
-                  <p className="text-[10px] text-emerald-700 mt-0.5 truncate">Ananya S.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDemoClick('SERVICE_PROVIDER', '/provider/dashboard')}
-                  disabled={isLoading}
-                  className="p-2.5 rounded-xl border border-teal-200 bg-teal-50/70 hover:bg-teal-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-1 text-teal-800 font-bold text-xs">
-                    <Wrench className="w-3.5 h-3.5 shrink-0" />
-                    <span>Worker</span>
-                  </div>
-                  <p className="text-[10px] text-teal-700 mt-0.5 truncate">Rahul S.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDemoClick('ADMIN', '/admin/dashboard')}
-                  disabled={isLoading}
-                  className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-1 text-rose-800 font-bold text-xs">
-                    <Shield className="w-3.5 h-3.5 shrink-0" />
-                    <span>Admin</span>
-                  </div>
-                  <p className="text-[10px] text-rose-700 mt-0.5 truncate">Operations</p>
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* Divider */}
             <div className="relative my-4">
