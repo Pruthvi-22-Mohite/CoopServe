@@ -25,7 +25,8 @@ import {
   ArrowRight,
   Download,
   Share2,
-  MessageSquare
+  MessageSquare,
+  Star
 } from 'lucide-react';
 
 export const CustomerBookingDetail = () => {
@@ -39,6 +40,115 @@ export const CustomerBookingDetail = () => {
   const [showChatModal, setShowChatModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('My schedule changed');
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Rating & Payment states
+  const [selectedRating, setSelectedRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+
+  const handlePayBooking = async () => {
+    if (!booking) return;
+    setIsPaying(true);
+    try {
+      const orderData = await api.createRazorpayOrder(booking.id);
+      if (!orderData.success) {
+        throw new Error(orderData.message || 'Failed to initialize payment');
+      }
+
+      if (!window.Razorpay) {
+        throw new Error('Razorpay SDK not loaded. Please refresh or verify internet connection.');
+      }
+
+      const options = {
+        key: orderData.razorpayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'CoopServe',
+        description: `Payment for ${booking.serviceTitle}`,
+        order_id: orderData.razorpayOrderId,
+        prefill: {
+          name: booking.customerName || '',
+          contact: booking.customerPhone || ''
+        },
+        theme: {
+          color: '#059669'
+        },
+        handler: async function () {
+          showToast('Payment submitted! Awaiting webhook confirmation...', 'info');
+          setTimeout(async () => {
+            try {
+              const res = await api.getBookingById(id);
+              if (res.success && res.booking) {
+                setBooking(res.booking);
+                showToast('Payment verified successfully!', 'success');
+              }
+            } catch (err) {
+              console.error('Failed to refetch booking after payment:', err);
+            }
+          }, 3000);
+        },
+        modal: {
+          ondismiss: function () {
+            setIsPaying(false);
+            showToast('Payment cancelled.', 'info');
+          }
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (res) {
+        setIsPaying(false);
+        showToast(res.error?.description || 'Payment failed.', 'error');
+      });
+      rzp.open();
+    } catch (err) {
+      console.error('Payment error:', err);
+      showToast(err.message || 'Payment processing error', 'error');
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  const handleSubmitRating = async (e) => {
+    e.preventDefault();
+    if (!booking) return;
+    if (selectedRating < 1 || selectedRating > 5) {
+      showToast('Please choose a rating between 1 and 5 stars.', 'error');
+      return;
+    }
+    if (reviewComment.length > 500) {
+      showToast('Review comment cannot exceed 500 characters.', 'error');
+      return;
+    }
+
+    setIsSubmittingRating(true);
+    try {
+      const res = await api.submitRating(booking.id, {
+        rating: selectedRating,
+        review: reviewComment.trim()
+      });
+
+      if (res.success) {
+        showToast(res.message || 'Rating submitted successfully!', 'success');
+        setBooking(prev => ({
+          ...prev,
+          rating: selectedRating,
+          review: res.review?.comment || reviewComment.trim(),
+          pendingRating: false,
+          ratingStatus: 'RATED'
+        }));
+      } else {
+        throw new Error(res.message || 'Failed to submit rating');
+      }
+    } catch (err) {
+      console.error('Submit rating error:', err);
+      showToast(err.message || 'Failed to submit rating', 'error');
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -334,6 +444,107 @@ export const CustomerBookingDetail = () => {
               )}
             </div>
           </Card>
+
+          {/* Customer Verified Rating Section for COMPLETED bookings */}
+          {isCompleted && (
+            <Card className="p-5 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/20 to-white shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <h3 className="text-sm font-bold text-slate-900">Verified Service Review & Rating</h3>
+                </div>
+                <Badge variant={booking.ratingStatus === 'RATED' || booking.rating ? 'success' : 'warning'} size="sm">
+                  {booking.ratingStatus === 'RATED' || booking.rating ? '✓ Rated' : 'Rating Pending'}
+                </Badge>
+              </div>
+
+              {booking.ratingStatus === 'RATED' || booking.rating ? (
+                <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-5 h-5 ${star <= (booking.rating || 5) ? 'text-amber-500 fill-amber-500' : 'text-slate-300'}`}
+                      />
+                    ))}
+                    <span className="text-sm font-bold text-slate-800 ml-2">
+                      {booking.rating ? `${Number(booking.rating).toFixed(1)} / 5.0` : '5.0 / 5.0'}
+                    </span>
+                  </div>
+                  {booking.review && (
+                    <p className="text-xs text-slate-700 italic mt-2">
+                      "{booking.review}"
+                    </p>
+                  )}
+                  <p className="text-[10px] text-emerald-800 font-semibold pt-1">
+                    ✓ Verified customer review recorded to cooperative ledger
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitRating} className="space-y-4">
+                  <div>
+                    <p className="text-xs text-slate-600 mb-2">
+                      How was your experience with <strong>{booking.providerName}</strong>? Your rating directly impacts provider trust scores and cooperative standing.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => setSelectedRating(star)}
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(0)}
+                          className="p-1 text-slate-300 hover:text-amber-500 transition-colors focus:outline-hidden"
+                        >
+                          <Star
+                            className={`w-7 h-7 transition-all ${
+                              star <= (hoverRating || selectedRating)
+                                ? 'text-amber-500 fill-amber-500 scale-110'
+                                : 'text-slate-300'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      <span className="text-xs font-bold text-slate-700 ml-2">
+                        {hoverRating || selectedRating} of 5 Stars
+                        {((hoverRating || selectedRating) === 5) && ' — Excellent'}
+                        {((hoverRating || selectedRating) === 4) && ' — Very Good'}
+                        {((hoverRating || selectedRating) === 3) && ' — Average'}
+                        {((hoverRating || selectedRating) === 2) && ' — Poor'}
+                        {((hoverRating || selectedRating) === 1) && ' — Terrible'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-semibold text-slate-700">Written Feedback (Optional)</label>
+                      <span className="text-[10px] text-slate-400">{reviewComment.length}/500</span>
+                    </div>
+                    <textarea
+                      rows="3"
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value.slice(0, 500))}
+                      placeholder={`Share any feedback on ${booking.providerName}'s work quality, punctuality, and professionalism...`}
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      isLoading={isSubmittingRating}
+                      leftIcon={<Star className="w-3.5 h-3.5 fill-current" />}
+                    >
+                      Submit Verified Rating
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </Card>
+          )}
         </div>
 
         {/* Right Column (4 cols): Transparent Payment & Receipts */}
@@ -344,7 +555,13 @@ export const CustomerBookingDetail = () => {
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 <span>Protected Receipt</span>
               </div>
-              <Badge variant="success" size="sm">PAID</Badge>
+              {booking.paymentStatus === 'PAID' ? (
+                <Badge variant="success" size="sm">PAID</Badge>
+              ) : booking.paymentStatus === 'FAILED' ? (
+                <Badge variant="danger" size="sm">PAYMENT FAILED</Badge>
+              ) : (
+                <Badge variant="warning" size="sm">PAYMENT PENDING</Badge>
+              )}
             </div>
 
             {/* Transparent Fee Breakdown */}
@@ -381,8 +598,30 @@ export const CustomerBookingDetail = () => {
 
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-500 space-y-1">
               <p>Txn ID: <strong>{booking.transactionId || 'CS-TXN-984214'}</strong></p>
-              <p>Method: <strong>{booking.paymentMethod || 'UPI (Mock)'}</strong></p>
+              <p>Method: <strong>{booking.paymentMethod || 'Razorpay'}</strong></p>
             </div>
+
+            {booking.paymentStatus !== 'PAID' && (
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                  <CreditCard className="w-4 h-4 text-amber-700" />
+                  <span>Payment Pending</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-snug">
+                  Complete your secure Razorpay checkout to activate guarantee & worker payout.
+                </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
+                  isLoading={isPaying}
+                  onClick={handlePayBooking}
+                  leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
+                >
+                  Pay ₹{booking.pricing?.customerTotal || 420} via Razorpay
+                </Button>
+              </div>
+            )}
 
             <Button
               variant="outline"

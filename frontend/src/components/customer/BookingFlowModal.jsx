@@ -27,7 +27,8 @@ import {
   Check,
   Download,
   Info,
-  Navigation
+  Navigation,
+  Loader2
 } from 'lucide-react';
 import { calculateBookingPrice } from '../../utils/pricingCalculator';
 
@@ -48,15 +49,18 @@ export const BookingFlowModal = ({
   const [timeSlot, setTimeSlot] = useState('11:00 AM - 12:30 PM');
   const [address, setAddress] = useState(user?.location ? `Flat 402, Green Meadows, ${user.location}` : 'Flat 402, Green Meadows, Kothrud, Pune - 411038');
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('UPI (Google Pay / PhonePe)');
-  const [upiId, setUpiId] = useState('customer@okaxis');
+  const [paymentMethod, setPaymentMethod] = useState('Razorpay Sandbox (UPI / Cards / NetBanking)');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
       setStep(1);
       setCreatedBooking(null);
+      setPaymentConfirmed(false);
+      setIsVerifyingPayment(false);
       if (provider?.pricingTiers && provider.pricingTiers.length > 0) {
         setSelectedTask(provider.pricingTiers[0]);
       } else {
@@ -91,9 +95,6 @@ export const BookingFlowModal = ({
   const handleProcessPayment = async () => {
     setIsProcessingPayment(true);
     try {
-      // Simulate real-time secure gateway handshake
-      await new Promise((r) => setTimeout(r, 1200));
-
       const bookingPayload = {
         providerId: provider.id,
         serviceTitle: selectedTask?.item || provider.skill,
@@ -108,17 +109,86 @@ export const BookingFlowModal = ({
         time: timeSlot.split(' - ')[0],
         address,
         notes,
-        paymentMethod: paymentMethod.split(' ')[0]
+        paymentMethod: 'Razorpay'
       };
 
+      // 1. Create booking in DB (starts as PENDING payment)
       const res = await api.createBooking(bookingPayload);
-      if (res.success && res.booking) {
-        setCreatedBooking(res.booking);
-        setStep(5); // Confirmation Screen
-        showToast('Payment Successful! Protected Booking Confirmed.', 'success');
-      } else {
+      if (!res.success || !res.booking) {
         throw new Error(res.message || 'Booking creation failed');
       }
+
+      const newBooking = res.booking;
+      setCreatedBooking(newBooking);
+
+      // 2. Create Razorpay order on backend
+      const orderData = await api.createRazorpayOrder(newBooking.id);
+      if (!orderData.success) {
+        throw new Error(orderData.message || 'Failed to initialize payment gateway order');
+      }
+
+      if (!window.Razorpay) {
+        throw new Error('Razorpay Checkout SDK is not loaded. Please verify connection.');
+      }
+
+      // 3. Open Razorpay Checkout modal
+      const options = {
+        key: orderData.razorpayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'CoopServe Platform',
+        description: `Protected Booking: ${newBooking.serviceTitle}`,
+        order_id: orderData.razorpayOrderId,
+        prefill: {
+          name: user?.name || '',
+          email: user?.email || '',
+          contact: user?.phone || ''
+        },
+        theme: {
+          color: '#059669'
+        },
+        handler: async function () {
+          setStep(5);
+          setIsVerifyingPayment(true);
+          showToast('Payment submitted! Awaiting webhook verification...', 'info');
+
+          // Refetch payment status after 3 seconds
+          setTimeout(async () => {
+            try {
+              const statusRes = await api.getPaymentStatus(newBooking.id);
+              if (statusRes.success && statusRes.paymentStatus === 'PAID') {
+                setPaymentConfirmed(true);
+                setCreatedBooking(prev => ({
+                  ...prev,
+                  paymentStatus: 'PAID',
+                  razorpayPaymentId: statusRes.paymentId
+                }));
+                showToast('Payment verified successfully! Protected booking confirmed.', 'success');
+              } else {
+                showToast('Payment verification in progress. You can view status anytime.', 'info');
+              }
+            } catch (statusErr) {
+              console.error('Status verification error:', statusErr);
+            } finally {
+              setIsVerifyingPayment(false);
+            }
+          }, 3000);
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessingPayment(false);
+            showToast('Checkout window closed. Booking saved with payment pending.', 'info');
+            setStep(5);
+          }
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (failResponse) {
+        setIsProcessingPayment(false);
+        showToast(failResponse.error?.description || 'Payment failed. Please try again.', 'error');
+      });
+      rzp.open();
     } catch (err) {
       console.error('Payment error:', err);
       showToast(err.message || 'Payment processing error', 'error');
@@ -399,7 +469,7 @@ export const BookingFlowModal = ({
         </div>
       )}
 
-      {/* STEP 4: Payment Simulation */}
+      {/* STEP 4: Razorpay Payment */}
       {step === 4 && (
         <div className="space-y-4 animate-in fade-in duration-200">
           <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
@@ -412,49 +482,35 @@ export const BookingFlowModal = ({
             <span className="text-xl font-black text-emerald-800">₹{pricing.customerTotal}</span>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-              Select Payment Method
-            </label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[
-                { id: 'UPI', label: 'UPI (GPay / PhonePe)', icon: Smartphone },
-                { id: 'Card', label: 'Credit / Debit Card', icon: CreditCard },
-                { id: 'NetBanking', label: 'Net Banking (All Banks)', icon: Building },
-                { id: 'Wallet', label: 'Cooperative Wallet', icon: Wallet }
-              ].map((opt) => {
-                const Icon = opt.icon;
-                return (
-                  <div
-                    key={opt.id}
-                    onClick={() => setPaymentMethod(opt.label)}
-                    className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-all ${
-                      paymentMethod.startsWith(opt.id)
-                        ? 'bg-emerald-50/90 border-emerald-500 shadow-xs text-emerald-900 font-bold'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="text-xs">{opt.label}</span>
-                  </div>
-                );
-              })}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Payment Gateway
+              </span>
+              <Badge variant="coop" size="sm">Razorpay Sandbox</Badge>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Clicking below will open the official <strong>Razorpay Checkout</strong> sandbox. You can pay using test UPI, Credit/Debit cards, Net Banking, or test Wallets.
+            </p>
+            <div className="grid grid-cols-4 gap-2 pt-1 text-[11px] text-slate-600">
+              <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
+                <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                <span>UPI</span>
+              </div>
+              <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
+                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Cards</span>
+              </div>
+              <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
+                <Building className="w-3.5 h-3.5 text-emerald-600" />
+                <span>NetBank</span>
+              </div>
+              <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
+                <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Wallets</span>
+              </div>
             </div>
           </div>
-
-          {paymentMethod.startsWith('UPI') && (
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <label className="block text-xs font-semibold text-slate-700">UPI ID / VPA</label>
-              <Input
-                type="text"
-                value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
-                placeholder="username@okaxis"
-                leftIcon={<Smartphone className="w-4 h-4" />}
-              />
-              <p className="text-[10px] text-slate-400">Mock verification will approve automatically.</p>
-            </div>
-          )}
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => setStep(3)} leftIcon={<ArrowLeft className="w-4 h-4" />}>
@@ -467,7 +523,7 @@ export const BookingFlowModal = ({
               onClick={handleProcessPayment}
               rightIcon={<ShieldCheck className="w-4 h-4" />}
             >
-              Pay ₹{pricing.customerTotal} & Confirm
+              Pay ₹{pricing.customerTotal} with Razorpay
             </Button>
           </div>
         </div>
@@ -477,15 +533,37 @@ export const BookingFlowModal = ({
       {step === 5 && createdBooking && (
         <div className="space-y-5 text-center py-4 animate-in zoom-in-95 duration-200">
           <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-inner ring-8 ring-emerald-50">
-            <CheckCircle2 className="w-9 h-9" />
+            {isVerifyingPayment ? (
+              <Loader2 className="w-9 h-9 animate-spin text-emerald-600" />
+            ) : (paymentConfirmed || createdBooking.paymentStatus === 'PAID') ? (
+              <CheckCircle2 className="w-9 h-9" />
+            ) : (
+              <ShieldCheck className="w-9 h-9" />
+            )}
           </div>
 
           <div className="space-y-1">
-            <Badge variant="protected" size="md">
-              COOPSERVE PROTECTED ACTIVE
+            <Badge variant={isVerifyingPayment ? 'warning' : (paymentConfirmed || createdBooking.paymentStatus === 'PAID') ? 'protected' : 'warning'} size="md">
+              {isVerifyingPayment
+                ? 'VERIFYING PAYMENT VIA WEBHOOK'
+                : (paymentConfirmed || createdBooking.paymentStatus === 'PAID')
+                ? 'COOPSERVE PROTECTED ACTIVE'
+                : 'PAYMENT VERIFICATION PENDING'}
             </Badge>
-            <h3 className="text-xl font-black text-slate-900">PAYMENT SUCCESSFUL</h3>
-            <p className="text-xs text-slate-500">Your appointment has been registered and verified.</p>
+            <h3 className="text-xl font-black text-slate-900">
+              {isVerifyingPayment
+                ? 'PROCESSING PAYMENT'
+                : (paymentConfirmed || createdBooking.paymentStatus === 'PAID')
+                ? 'PAYMENT CONFIRMED'
+                : 'BOOKING SCHEDULED'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isVerifyingPayment
+                ? 'Awaiting webhook signature confirmation from Razorpay sandbox...'
+                : (paymentConfirmed || createdBooking.paymentStatus === 'PAID')
+                ? 'Your payment was verified. Service is recorded on CoopServe.'
+                : 'Booking created with payment pending. You can track status in your dashboard.'}
+            </p>
           </div>
 
           {/* Digital Receipt Card */}
