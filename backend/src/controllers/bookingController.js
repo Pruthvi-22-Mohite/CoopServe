@@ -247,12 +247,14 @@ export const createBooking = async (req, res) => {
       travelFee: calculatedPricing.travelFee,
       extraCharges: calculatedPricing.extraCharges,
       pricing: calculatedPricing,
-      paymentStatus: 'PAID',
-      paymentMethod: paymentMethod || 'UPI (Mock)',
+      paymentStatus: 'PENDING',
+      paymentMethod: paymentMethod || 'Razorpay',
       transactionId: txnId,
       status: 'BOOKED',
       protectedBooking: true,
-      protectionEnabled: true
+      protectionEnabled: true,
+      pendingRating: false,
+      ratingStatus: 'NOT_RATED'
     };
 
     // Save persistent booking to MongoDB
@@ -375,6 +377,10 @@ export const updateBookingStatus = async (req, res) => {
       notificationTitle = 'Service Completed & Verified!';
       notificationMessage = `Your service is complete. 30-day rework warranty is now active under CoopServe Protection.`;
       booking.completedAt = new Date().toISOString();
+      booking.pendingRating = true;
+      if (!booking.ratingStatus || booking.ratingStatus === 'NOT_RATED') {
+        booking.ratingStatus = 'NOT_RATED';
+      }
 
       // Record verified work history in Mongo Provider
       const providerQuery = mongoose.isValidObjectId(booking.providerId)
@@ -390,7 +396,7 @@ export const updateBookingStatus = async (req, res) => {
           customer: booking.customerName,
           service: booking.serviceTitle,
           date: booking.date,
-          rating: 5.0,
+          rating: null,
           verified: true
         });
         await mongoProvider.save();

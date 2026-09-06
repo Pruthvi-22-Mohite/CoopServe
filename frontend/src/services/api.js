@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = rawBase.endsWith('/api') ? rawBase : `${rawBase.replace(/\/$/, '')}/api`;
 
 class ApiService {
   constructor() {
@@ -365,6 +366,30 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ text })
     });
+  }
+
+  // Payment APIs
+  createRazorpayOrder(bookingId) {
+    return this.request('/payments/create-order', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId })
+    });
+  }
+
+  getPaymentStatus(bookingId) {
+    return this.request(`/payments/booking/${bookingId}/status`);
+  }
+
+  // Rating & Review APIs
+  submitRating(bookingId, data) {
+    return this.request(`/ratings/bookings/${bookingId}`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  getRatingForBooking(bookingId) {
+    return this.request(`/ratings/bookings/${bookingId}`);
   }
 }
 

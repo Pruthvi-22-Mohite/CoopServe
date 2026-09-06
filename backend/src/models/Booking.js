@@ -129,8 +129,33 @@ const bookingSchema = new mongoose.Schema({
   pricing: pricingBreakdownSchema,
   paymentStatus: {
     type: String,
-    enum: ['PENDING', 'PAID', 'REFUNDED'],
-    default: 'PAID'
+    enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
+    default: 'PENDING'
+  },
+  razorpayOrderId: {
+    type: String,
+    index: true,
+    sparse: true
+  },
+  razorpayPaymentId: {
+    type: String,
+    index: true,
+    sparse: true
+  },
+  razorpaySignature: {
+    type: String
+  },
+  paidAt: {
+    type: String
+  },
+  pendingRating: {
+    type: Boolean,
+    default: false
+  },
+  ratingStatus: {
+    type: String,
+    enum: ['NOT_RATED', 'RATED'],
+    default: 'NOT_RATED'
   },
   paymentMethod: {
     type: String,

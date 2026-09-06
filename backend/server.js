@@ -15,6 +15,8 @@ import providerModuleRoutes from './src/routes/providerModuleRoutes.js';
 import cooperativeRoutes from './src/routes/cooperativeRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import chatRoutes from './src/routes/chatRoutes.js';
+import paymentRoutes from './src/routes/paymentRoutes.js';
+import ratingRoutes from './src/routes/ratingRoutes.js';
 import { getLocations } from './src/controllers/authController.js';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
@@ -52,7 +54,24 @@ app.use(cors({
   origin: clientOrigin,
   credentials: true
 }));
-app.use(express.json());
+
+// Scoped raw body parser for Razorpay webhook signature verification (must be before global express.json)
+app.use('/api/payments/webhook', express.raw({ type: '*/*' }), (req, res, next) => {
+  if (Buffer.isBuffer(req.body)) {
+    req.rawBody = req.body.toString('utf8');
+  } else if (typeof req.body === 'string') {
+    req.rawBody = req.body;
+  }
+  next();
+});
+
+app.use(express.json({
+  verify: (req, res, buf) => {
+    if (!req.rawBody && buf) {
+      req.rawBody = buf.toString('utf8');
+    }
+  }
+}));
 app.use(morgan('dev'));
 
 // Attach io to requests for controllers
@@ -68,6 +87,8 @@ app.get('/api/locations', getLocations);
 app.use('/api/services', serviceRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/ratings', ratingRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/provider', providerModuleRoutes);
 app.use('/api/cooperative', cooperativeRoutes);
@@ -317,7 +338,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 const startServer = async () => {
   await connectDB();

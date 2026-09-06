@@ -45,6 +45,14 @@ const reviewSchema = new mongoose.Schema({
   date: {
     type: String,
     default: () => new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  },
+  isSuspicious: {
+    type: Boolean,
+    default: false
+  },
+  suspiciousReasons: {
+    type: [String],
+    default: []
   }
 }, {
   timestamps: true
