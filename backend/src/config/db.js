@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Provider from '../models/Provider.js';
 import { DEMO_ACCOUNTS } from './constants.js';
+import { inMemoryStore } from '../store/inMemoryStore.js';
 
 export const connectDB = async () => {
   const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
@@ -26,6 +28,22 @@ export const connectDB = async () => {
       }
     } catch (seedErr) {
       console.warn('[MongoDB] Demo accounts seed note:', seedErr.message);
+    }
+
+    // Seed initial providers into MongoDB if not already present
+    try {
+      const providerCount = await Provider.countDocuments();
+      if (providerCount === 0 && inMemoryStore.providers?.length > 0) {
+        for (const prov of inMemoryStore.providers) {
+          await Provider.create({
+            ...prov,
+            userId: prov.id === 'usr_provider_demo' ? 'usr_provider_demo' : undefined
+          });
+        }
+        console.log(`[MongoDB] Seeded ${inMemoryStore.providers.length} providers into MongoDB.`);
+      }
+    } catch (provErr) {
+      console.warn('[MongoDB] Provider seed note:', provErr.message);
     }
 
     return conn;

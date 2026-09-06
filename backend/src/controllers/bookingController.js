@@ -3,6 +3,8 @@ import Booking from '../models/Booking.js';
 import Provider from '../models/Provider.js';
 import Notification from '../models/Notification.js';
 import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCalculator.js';
+import { isUserAuthorizedForBooking } from '../middleware/authMiddleware.js';
+import { matchProviders } from '../services/matchingEngine.js';
 
 export const getBookings = async (req, res) => {
   try {
@@ -105,6 +107,96 @@ export const createBooking = async (req, res) => {
 
     const provider = await Provider.findOne(providerQuery);
 
+    // Task 3: Provider Slot-Clash / Double-Booking Prevention
+    const providerIdentities = [providerId];
+    if (provider) {
+      if (provider.id && !providerIdentities.includes(provider.id)) providerIdentities.push(provider.id);
+      if (provider._id && !providerIdentities.includes(provider._id.toString())) providerIdentities.push(provider._id.toString());
+      if (provider.userId && !providerIdentities.includes(provider.userId)) providerIdentities.push(provider.userId);
+    }
+    if (providerId === 'prov_1' && !providerIdentities.includes('usr_provider_demo')) {
+      providerIdentities.push('usr_provider_demo');
+    }
+    if (providerId === 'usr_provider_demo' && !providerIdentities.includes('prov_1')) {
+      providerIdentities.push('prov_1');
+    }
+
+    const requestedDate = date || new Date().toISOString().split('T')[0];
+    const requestedTime = time || '11:00 AM';
+
+    const activeBookingStatuses = [
+      'BOOKED',
+      'ACCEPTED',
+      'PROVIDER_ACCEPTED',
+      'ON_THE_WAY',
+      'ARRIVED',
+      'IN_PROGRESS'
+    ];
+
+    const conflictingBooking = await Booking.findOne({
+      providerId: { $in: providerIdentities },
+      date: requestedDate,
+      time: requestedTime,
+      status: { $in: activeBookingStatuses }
+    });
+
+    if (conflictingBooking) {
+      // Find all busy providers at that slot
+      const busyProviderIds = await Booking.find({
+        date: requestedDate,
+        time: requestedTime,
+        status: { $in: activeBookingStatuses }
+      }).distinct('providerId');
+
+      // Query alternative candidate providers from MongoDB
+      const candidateFilter = {
+        id: { $nin: providerIdentities },
+        status: { $ne: 'Suspended' }
+      };
+      if (provider?._id) {
+        candidateFilter._id = { $ne: provider._id };
+      }
+
+      const allCandidates = await Provider.find(candidateFilter).lean();
+
+      // Exclude providers with active bookings at the requested date/time
+      const availableCandidates = allCandidates.filter(cand => {
+        const cid = cand.id ? String(cand.id) : '';
+        const cmongoid = cand._id ? String(cand._id) : '';
+        const cuserid = cand.userId ? String(cand.userId) : '';
+        return !busyProviderIds.includes(cid) &&
+               !busyProviderIds.includes(cmongoid) &&
+               !busyProviderIds.includes(cuserid);
+      });
+
+      // Rank alternatives with CoopServe Smart Matching Engine
+      const targetCategory = category || provider?.categories?.[0] || 'all';
+      const matchResult = matchProviders(
+        availableCandidates.length > 0 ? availableCandidates : allCandidates,
+        {
+          categoryId: targetCategory,
+          serviceTitle: serviceTitle || provider?.skill || '',
+          customerLocation: address || 'Pune'
+        }
+      );
+
+      const alternativeProviders = matchResult.rankedProviders || [];
+
+      return res.status(409).json({
+        success: false,
+        error: 'PROVIDER_SLOT_CONFLICT',
+        message: `The selected provider (${provider?.name || providerId}) is already booked for ${requestedDate} at ${requestedTime}. Please choose another time slot or select an alternative provider.`,
+        conflict: {
+          providerId: provider?.id || providerId,
+          providerName: provider?.name || 'Selected Provider',
+          date: requestedDate,
+          time: requestedTime
+        },
+        alternativeProviders,
+        alternatives: alternativeProviders
+      });
+    }
+
     // Backend pricingCalculator is the single source of truth.
     // Client values cannot override backend calculated prices.
     const resolvedBasePrice = Math.max(0, Math.round(Number(
@@ -145,8 +237,8 @@ export const createBooking = async (req, res) => {
       serviceId: serviceId || 'srv_custom',
       serviceTitle: serviceTitle || provider?.skill || 'Cooperative Household Service',
       category: category || provider?.categories?.[0] || 'general',
-      date: date || new Date().toISOString().split('T')[0],
-      time: time || '11:00 AM',
+      date: requestedDate,
+      time: requestedTime,
       address: address || 'Flat 402, Green Meadows, Kothrud, Pune - 411038',
       notes: notes || '',
       price: calculatedPricing.customerTotal,
@@ -190,7 +282,15 @@ export const createBooking = async (req, res) => {
     }
 
     if (req.io) {
-      req.io.emit('new_booking_created', newBooking);
+      // Task 4: Scoped broadcasting only to authorized booking and participant user rooms
+      req.io.to(newBooking.id).emit('new_booking_created', newBooking);
+      if (newBooking.customerId) {
+        req.io.to(newBooking.customerId).emit('new_booking_created', newBooking);
+      }
+      if (newBooking.providerId) {
+        req.io.to(newBooking.providerId).emit('new_booking_created', newBooking);
+      }
+      req.io.to('admin').emit('new_booking_created', newBooking);
     }
 
     return res.status(201).json({
@@ -240,6 +340,15 @@ export const updateBookingStatus = async (req, res) => {
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    // Task 2: Booking ownership verification
+    const isAuthorized = await isUserAuthorizedForBooking(req.user, booking);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to modify this booking.'
+      });
     }
 
     // Standardize ACCEPTED
@@ -308,7 +417,16 @@ export const updateBookingStatus = async (req, res) => {
     }
 
     if (req.io) {
-      req.io.emit('booking_status_changed', { bookingId: booking.id, status: normalizedStatus, booking });
+      // Task 4: Scoped broadcasting only to authorized booking and participant user rooms
+      const statusPayload = { bookingId: booking.id, status: normalizedStatus, booking };
+      req.io.to(booking.id).emit('booking_status_changed', statusPayload);
+      if (booking.customerId) {
+        req.io.to(booking.customerId).emit('booking_status_changed', statusPayload);
+      }
+      if (booking.providerId) {
+        req.io.to(booking.providerId).emit('booking_status_changed', statusPayload);
+      }
+      req.io.to('admin').emit('booking_status_changed', statusPayload);
     }
 
     return res.status(200).json({
@@ -333,6 +451,18 @@ export const getBookingById = async (req, res) => {
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking record not found' });
     }
+
+    // Task 2: Booking ownership verification
+    if (req.user) {
+      const isAuthorized = await isUserAuthorizedForBooking(req.user, booking);
+      if (!isAuthorized) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: You are not authorized to view this booking.'
+        });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       booking
@@ -357,6 +487,15 @@ export const cancelBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    // Task 2: Booking ownership verification
+    const isAuthorized = await isUserAuthorizedForBooking(req.user, booking);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to cancel this booking.'
+      });
+    }
+
     booking.status = 'CANCELLED';
     booking.cancellationReason = reason || 'Customer requested cancellation';
     booking.cancelledAt = new Date().toISOString();
@@ -364,7 +503,15 @@ export const cancelBooking = async (req, res) => {
     await booking.save();
 
     if (req.io) {
-      req.io.emit('booking_cancelled', booking);
+      // Task 4: Scoped broadcasting only to authorized booking and participant user rooms
+      req.io.to(booking.id).emit('booking_cancelled', booking);
+      if (booking.customerId) {
+        req.io.to(booking.customerId).emit('booking_cancelled', booking);
+      }
+      if (booking.providerId) {
+        req.io.to(booking.providerId).emit('booking_cancelled', booking);
+      }
+      req.io.to('admin').emit('booking_cancelled', booking);
     }
 
     return res.status(200).json({
