@@ -37,7 +37,8 @@ export const BookingFlowModal = ({
   onClose,
   provider,
   initialService,
-  initialPrice
+  initialPrice,
+  onBookingCreated
 }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -163,6 +164,9 @@ export const BookingFlowModal = ({
                   paymentStatus: 'PAID',
                   razorpayPaymentId: statusRes.paymentId
                 }));
+                if (onBookingCreated) {
+                  onBookingCreated(newBooking);
+                }
                 showToast('Payment verified successfully! Protected booking confirmed.', 'success');
               } else {
                 showToast('Payment verification in progress. You can view status anytime.', 'info');

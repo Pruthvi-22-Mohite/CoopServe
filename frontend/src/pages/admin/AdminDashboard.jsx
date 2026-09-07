@@ -70,6 +70,7 @@ export const AdminDashboard = () => {
     communityFund = 142620,
     averageRating = 4.88,
     cancellationRate = '2.4%',
+    geoReviewCount = 0,
     revenueTrend = [],
     categoryBreakdown = [],
     recentBookings = []
@@ -145,6 +146,13 @@ export const AdminDashboard = () => {
           icon={XCircle}
           trend={{ direction: 'down', text: 'Low friction metric' }}
           variant="danger"
+        />
+        <StatCard
+          title="Geo Verification Reviews"
+          value={geoReviewCount}
+          icon={AlertTriangle}
+          trend={{ direction: geoReviewCount > 0 ? 'down' : 'up', text: geoReviewCount > 0 ? 'Needs manual review' : 'All clear' }}
+          variant={geoReviewCount > 0 ? 'danger' : 'success'}
         />
       </div>
 

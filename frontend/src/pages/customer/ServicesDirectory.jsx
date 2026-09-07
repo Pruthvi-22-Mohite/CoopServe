@@ -33,6 +33,7 @@ export const ServicesDirectory = () => {
   // Smart Match Modal State
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [matchingService, setMatchingService] = useState(null);
+  const [emergencyMode, setEmergencyMode] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,6 +69,13 @@ export const ServicesDirectory = () => {
 
   const handleTriggerSmartMatch = (srv) => {
     setMatchingService(srv);
+    setEmergencyMode(false);
+    setMatchModalOpen(true);
+  };
+
+  const handleTriggerEmergencyBooking = (srv) => {
+    setMatchingService(srv);
+    setEmergencyMode(true);
     setMatchModalOpen(true);
   };
 
@@ -202,7 +210,15 @@ export const ServicesDirectory = () => {
                     onClick={() => handleTriggerSmartMatch(srv)}
                     leftIcon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
                   >
-                    AI Match
+                    Instant Match
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleTriggerEmergencyBooking(srv)}
+                    leftIcon={<Zap className="w-3.5 h-3.5" />}
+                  >
+                    Emergency Booking
                   </Button>
                   <Button
                     variant="outline"
@@ -222,10 +238,15 @@ export const ServicesDirectory = () => {
       {/* Smart Match Modal */}
       <SmartMatchModal
         isOpen={matchModalOpen}
-        onClose={() => setMatchModalOpen(false)}
+        onClose={() => {
+          setMatchModalOpen(false);
+          setEmergencyMode(false);
+        }}
+        emergencyMode={emergencyMode}
         category={matchingService?.categoryId}
         serviceTitle={matchingService?.title}
         initialServiceId={matchingService?.id}
+        initialService={matchingService}
       />
     </div>
   );

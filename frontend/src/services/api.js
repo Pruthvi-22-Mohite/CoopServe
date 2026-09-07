@@ -277,6 +277,13 @@ class ApiService {
     });
   }
 
+  emergencyReassignBooking(id, providerId) {
+    return this.request(`/bookings/${id}/emergency-reassign`, {
+      method: 'POST',
+      body: JSON.stringify({ providerId })
+    });
+  }
+
   // Provider Module APIs
   getProviderStats() {
     return this.request('/provider/stats');
@@ -322,6 +329,21 @@ class ApiService {
   // Cooperative Ecosystem APIs
   getCooperativeOverview() {
     return this.request('/cooperative/overview');
+  }
+
+  getGovernancePoll() {
+    return this.request('/cooperative/governance/active');
+  }
+
+  submitGovernanceVote(pollId, selectedOption) {
+    return this.request(`/cooperative/governance/${pollId}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ selectedOption })
+    });
+  }
+
+  getGovernanceResults(pollId) {
+    return this.request(`/cooperative/governance/${pollId}/results`);
   }
 
   // Admin APIs
@@ -390,6 +412,13 @@ class ApiService {
 
   getRatingForBooking(bookingId) {
     return this.request(`/ratings/bookings/${bookingId}`);
+  }
+
+  verifyBookingLocation(id, data) {
+    return this.request(`/bookings/${id}/verify-location`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
   }
 }
 

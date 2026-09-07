@@ -9,13 +9,10 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { EmptyState } from '../../components/common/EmptyState';
 import {
   Briefcase,
-  Clock,
   MapPin,
   CheckCircle2,
-  XCircle,
   Truck,
   PlayCircle,
-  Phone,
   ShieldCheck,
   Calendar
 } from 'lucide-react';
@@ -23,7 +20,7 @@ import {
 export const ProviderJobs = () => {
   const { showToast } = useToast();
   const [bookings, setBookings] = useState([]);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'pending', 'active', 'completed'
+  const [activeFilter, setActiveFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
 
@@ -57,6 +54,39 @@ export const ProviderJobs = () => {
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const handleGeotagVerification = async (booking, targetStatus, stage) => {
+    if (!navigator.geolocation) {
+      showToast('This device does not support GPS-based verification.', 'error');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const res = await api.verifyBookingLocation(booking.id, {
+            stage,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+
+          if (!res.success || !res.verified) {
+            showToast(res.message || 'Geolocation verification failed. Please move closer to the service location.', 'error');
+            return;
+          }
+
+          showToast(res.message || 'Location verified successfully.', 'success');
+          await handleUpdateStatus(booking.id, targetStatus);
+        } catch (err) {
+          showToast(err.message || 'Unable to verify your GPS location.', 'error');
+        }
+      },
+      () => {
+        showToast('Location access was denied. Please enable GPS to continue the job.', 'error');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   const filteredJobs = bookings.filter((b) => {
@@ -106,7 +136,6 @@ export const ProviderJobs = () => {
         }
       />
 
-      {/* Filter Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white p-2 rounded-2xl">
         <button
           onClick={() => setActiveFilter('all')}
@@ -150,7 +179,6 @@ export const ProviderJobs = () => {
         </button>
       </div>
 
-      {/* Jobs List */}
       {filteredJobs.length === 0 ? (
         <EmptyState
           icon={Briefcase}
@@ -193,7 +221,6 @@ export const ProviderJobs = () => {
                   )}
                 </div>
 
-                {/* Price Breakdown & Actions */}
                 <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0">
                   <div className="text-left lg:text-right">
                     <span className="text-[10px] text-slate-400 uppercase font-bold block">Your Net Payout (90%)</span>
@@ -201,7 +228,6 @@ export const ProviderJobs = () => {
                     <span className="text-[10px] text-slate-500 block">Customer Paid: ₹{job.pricing?.customerPayment || 500}</span>
                   </div>
 
-                  {/* Status update buttons */}
                   <div className="flex flex-wrap items-center gap-2">
                     {job.status === 'BOOKED' && (
                       <>
@@ -254,7 +280,7 @@ export const ProviderJobs = () => {
                         variant="primary"
                         size="sm"
                         isLoading={updatingId === job.id}
-                        onClick={() => handleUpdateStatus(job.id, 'IN_PROGRESS')}
+                        onClick={() => handleGeotagVerification(job, 'IN_PROGRESS', 'start')}
                         leftIcon={<PlayCircle className="w-3.5 h-3.5" />}
                       >
                         Start Service
@@ -266,7 +292,7 @@ export const ProviderJobs = () => {
                         variant="coop"
                         size="sm"
                         isLoading={updatingId === job.id}
-                        onClick={() => handleUpdateStatus(job.id, 'COMPLETED')}
+                        onClick={() => handleGeotagVerification(job, 'COMPLETED', 'completion')}
                         leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                       >
                         Complete Job & Settle

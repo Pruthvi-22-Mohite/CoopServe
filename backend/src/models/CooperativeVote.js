@@ -7,15 +7,26 @@ const cooperativeVoteSchema = new mongoose.Schema({
     sparse: true,
     index: true
   },
+  pollId: {
+    type: String,
+    index: true,
+    sparse: true
+  },
   initiativeId: {
     type: String,
     required: [true, 'Initiative ID is required'],
-    index: true
+    index: true,
+    sparse: true
   },
   initiativeTitle: {
     type: String,
     default: 'Cooperative Standards & Certification Ballot',
     trim: true
+  },
+  providerId: {
+    type: String,
+    index: true,
+    sparse: true
   },
   voterId: {
     type: String,
@@ -30,6 +41,15 @@ const cooperativeVoteSchema = new mongoose.Schema({
     type: String,
     enum: ['CUSTOMER', 'SERVICE_PROVIDER', 'ADMIN'],
     default: 'SERVICE_PROVIDER'
+  },
+  selectedOption: {
+    type: String,
+    trim: true,
+    default: 'KEEP_10'
+  },
+  optionLabel: {
+    type: String,
+    trim: true
   },
   decision: {
     type: String,
@@ -48,13 +68,27 @@ const cooperativeVoteSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Enforce 1 Member 1 Vote per initiative
-cooperativeVoteSchema.index({ initiativeId: 1, voterId: 1 }, { unique: true });
+// Enforce 1 Member 1 Vote per initiative and per governance poll
+cooperativeVoteSchema.index({ initiativeId: 1, voterId: 1 }, { unique: true, sparse: true });
+cooperativeVoteSchema.index({ pollId: 1, providerId: 1 }, { unique: true, sparse: true });
+cooperativeVoteSchema.index({ pollId: 1, voterId: 1 }, { unique: true, sparse: true });
 
 // Auto-assign custom id and signature if not provided before save
 cooperativeVoteSchema.pre('save', function (next) {
   if (!this.id) {
     this.id = `vote_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+  }
+  if (!this.providerId && this.voterId) {
+    this.providerId = this.voterId;
+  }
+  if (!this.pollId && this.initiativeId) {
+    this.pollId = this.initiativeId;
+  }
+  if (!this.selectedOption && this.decision) {
+    this.selectedOption = this.decision === 'NO' || this.decision === 'AGAINST' ? 'REVIEW_RATE' : 'KEEP_10';
+  }
+  if (!this.optionLabel) {
+    this.optionLabel = this.selectedOption === 'REVIEW_RATE' ? 'No, review the commission rate' : 'Yes, keep 10%';
   }
   if (!this.signature) {
     this.signature = `COOP-LEDGER-SIG-${Date.now()}-${Math.floor(100000 + Math.random() * 900000)}`;

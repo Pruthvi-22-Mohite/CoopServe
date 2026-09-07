@@ -35,6 +35,7 @@ export const getAdminDashboardStats = async (req, res) => {
     const providerUtilization = '92%';
 
     const recentBookings = await Booking.find({}).sort({ createdAt: -1 }).limit(5);
+    const geoReviewCount = await Booking.countDocuments({ reviewRequired: true });
 
     return res.status(200).json({
       success: true,
@@ -48,6 +49,7 @@ export const getAdminDashboardStats = async (req, res) => {
         providerUtilization,
         averageRating,
         cancellationRate,
+        geoReviewCount,
         recentBookings,
         revenueTrend: [
           { month: 'Apr', gross: 240000, workerEarnings: 216000, platformOps: 24000 },
@@ -98,15 +100,50 @@ export const getAdminProviders = async (req, res) => {
 export const updateProviderStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, isVerified } = req.body;
+    const { status, isVerified, reason } = req.body;
+    const requestedStatus = status === undefined ? undefined : String(status).trim();
+    const normalizedStatus = requestedStatus === 'Inactive' || requestedStatus === 'INACTIVE' ? 'Suspended' : requestedStatus;
+
+    const isDeactivationRequest = ['Suspended', 'SUSPENDED', 'Inactive', 'INACTIVE'].includes(String(normalizedStatus || ''));
+    const isReactivationRequest = ['Active', 'ACTIVE'].includes(String(normalizedStatus || ''));
+
+    if (isDeactivationRequest) {
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
+      if (!trimmedReason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Deactivation reason is required.'
+        });
+      }
+
+      if (trimmedReason.length > 500) {
+        return res.status(400).json({
+          success: false,
+          message: 'Deactivation reason must be 500 characters or fewer.'
+        });
+      }
+    }
 
     const query = mongoose.isValidObjectId(id) ? { $or: [{ _id: id }, { id }] } : { id };
+    const actingAdminId = req.user?.id || req.user?._id?.toString() || 'unknown-admin';
+
     const provider = await Provider.findOneAndUpdate(
       query,
       {
         $set: {
-          ...(status !== undefined && { status }),
-          ...(isVerified !== undefined && { isVerified: Boolean(isVerified) })
+          ...(normalizedStatus !== undefined && { status: normalizedStatus }),
+          ...(isVerified !== undefined && { isVerified: Boolean(isVerified) }),
+          ...(isDeactivationRequest && {
+            deactivationReason: typeof reason === 'string' ? reason.trim() : '',
+            deactivatedAt: new Date(),
+            deactivatedBy: actingAdminId
+          }),
+          ...(isReactivationRequest && {
+            deactivationReason: null,
+            deactivatedAt: null,
+            deactivatedBy: null
+          })
         }
       },
       { new: true }
