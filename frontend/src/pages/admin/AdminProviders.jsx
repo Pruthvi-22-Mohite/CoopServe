@@ -30,6 +30,9 @@ export const AdminProviders = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState(null);
+  const [deactivationProvider, setDeactivationProvider] = useState(null);
+  const [deactivationReason, setDeactivationReason] = useState('');
+  const [deactivationError, setDeactivationError] = useState('');
 
   const fetchProviders = async () => {
     setIsLoading(true);
@@ -63,15 +66,53 @@ export const AdminProviders = () => {
   };
 
   const handleToggleSuspend = async (provider) => {
+    if (provider.status !== 'Suspended') {
+      setDeactivationProvider(provider);
+      setDeactivationReason('');
+      setDeactivationError('');
+      return;
+    }
+
     try {
-      const newStatus = provider.status === 'Suspended' ? 'Active' : 'Suspended';
-      const res = await api.updateAdminProviderStatus(provider.id, { status: newStatus });
+      const res = await api.updateAdminProviderStatus(provider.id, { status: 'Active' });
       if (res.success) {
-        showToast(`${provider.name} is now ${newStatus}!`, newStatus === 'Suspended' ? 'warning' : 'success');
+        showToast(`${provider.name} is now Active!`, 'success');
         await fetchProviders();
       }
     } catch (err) {
       showToast('Failed to update provider status', 'error');
+    }
+  };
+
+  const handleConfirmDeactivation = async () => {
+    const trimmedReason = deactivationReason.trim();
+
+    if (!trimmedReason) {
+      setDeactivationError('Please provide a reason before deactivating this provider.');
+      return;
+    }
+
+    if (trimmedReason.length > 500) {
+      setDeactivationError('Reason must be 500 characters or fewer.');
+      return;
+    }
+
+    try {
+      const res = await api.updateAdminProviderStatus(deactivationProvider.id, {
+        status: 'Suspended',
+        reason: trimmedReason
+      });
+
+      if (res.success) {
+        showToast(`${deactivationProvider.name} is now Suspended.`, 'warning');
+        setDeactivationProvider(null);
+        setDeactivationReason('');
+        setDeactivationError('');
+        await fetchProviders();
+      }
+    } catch (err) {
+      const apiMessage = err?.message || 'Failed to deactivate provider';
+      setDeactivationError(apiMessage);
     }
   };
 
@@ -232,6 +273,59 @@ export const AdminProviders = () => {
         </div>
       </Card>
 
+      {deactivationProvider && (
+        <Modal
+          isOpen={!!deactivationProvider}
+          onClose={() => {
+            setDeactivationProvider(null);
+            setDeactivationReason('');
+            setDeactivationError('');
+          }}
+          title={`Deactivate ${deactivationProvider.name}?`}
+          description="This provider will be suspended until an admin reactivates them."
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">
+                Reason for deactivation (required)
+              </label>
+              <textarea
+                value={deactivationReason}
+                onChange={(event) => {
+                  setDeactivationReason(event.target.value);
+                  if (deactivationError) setDeactivationError('');
+                }}
+                rows={4}
+                placeholder="Document the reason for this suspension..."
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            {deactivationError && (
+              <p className="text-xs text-red-600 font-medium">{deactivationError}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDeactivationProvider(null);
+                  setDeactivationReason('');
+                  setDeactivationError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleConfirmDeactivation}>
+                Deactivate Provider
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Provider Details Modal */}
       {selectedProvider && (
         <Modal
@@ -264,6 +358,13 @@ export const AdminProviders = () => {
                 <span className="text-[10px] text-slate-400 block mt-0.5">Net Take-Home</span>
               </div>
             </div>
+
+            {selectedProvider.status === 'Suspended' && selectedProvider.deactivationReason && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <span className="font-bold uppercase tracking-wider text-[10px] block">Deactivation Reason</span>
+                <p className="mt-1">{selectedProvider.deactivationReason}</p>
+              </div>
+            )}
 
             {selectedProvider.bio && (
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">

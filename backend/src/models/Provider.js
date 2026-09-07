@@ -140,6 +140,20 @@ const providerSchema = new mongoose.Schema({
     enum: ['Active', 'Pending', 'Suspended'],
     default: 'Active'
   },
+  deactivationReason: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  deactivatedAt: {
+    type: Date,
+    default: null
+  },
+  deactivatedBy: {
+    type: String,
+    default: null,
+    trim: true
+  },
   pricingTiers: [pricingTierSchema],
   workHistory: [workHistorySchema],
   reviews: [reviewSchema]
