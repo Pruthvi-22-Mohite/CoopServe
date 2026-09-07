@@ -331,6 +331,21 @@ class ApiService {
     return this.request('/cooperative/overview');
   }
 
+  getGovernancePoll() {
+    return this.request('/cooperative/governance/active');
+  }
+
+  submitGovernanceVote(pollId, selectedOption) {
+    return this.request(`/cooperative/governance/${pollId}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ selectedOption })
+    });
+  }
+
+  getGovernanceResults(pollId) {
+    return this.request(`/cooperative/governance/${pollId}/results`);
+  }
+
   // Admin APIs
   getAdminDashboard() {
     return this.request('/admin/dashboard');

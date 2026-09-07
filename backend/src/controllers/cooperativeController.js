@@ -4,6 +4,84 @@ import CooperativeVote from '../models/CooperativeVote.js';
 import Provider from '../models/Provider.js';
 import Booking from '../models/Booking.js';
 
+const DEFAULT_GOVERNANCE_POLL = {
+  id: 'commission_rate_2026_q4',
+  title: 'Should the cooperative commission rate remain at 10%?',
+  question: 'Should the cooperative commission rate remain at 10%?',
+  status: 'ACTIVE',
+  summary: 'Annual cooperative commission review for member governance.',
+  options: [
+    { value: 'KEEP_10', label: 'Yes, keep 10%' },
+    { value: 'REVIEW_RATE', label: 'No, review the commission rate' }
+  ]
+};
+
+const ACTIVE_GOVERNANCE_POLL_ID = DEFAULT_GOVERNANCE_POLL.id;
+
+const isActiveGovernancePoll = (pollId) => String(pollId || '') === ACTIVE_GOVERNANCE_POLL_ID;
+
+const normalizeVoteOption = (rawOption) => {
+  if (!rawOption) return null;
+  const value = String(rawOption).trim().toUpperCase();
+  const mapped = {
+    YES: 'KEEP_10',
+    NO: 'REVIEW_RATE',
+    FOR: 'KEEP_10',
+    AGAINST: 'REVIEW_RATE',
+    KEEP_10: 'KEEP_10',
+    REVIEW_RATE: 'REVIEW_RATE',
+    KEEP10: 'KEEP_10',
+    REVIEWRATE: 'REVIEW_RATE'
+  };
+  return mapped[value] || null;
+};
+
+const resolvePollResults = async (pollId = DEFAULT_GOVERNANCE_POLL.id) => {
+  const votes = await CooperativeVote.find({
+    $or: [
+      { pollId },
+      { initiativeId: pollId }
+    ]
+  }).sort({ createdAt: -1 });
+
+  const tally = {
+    KEEP_10: 0,
+    REVIEW_RATE: 0
+  };
+
+  votes.forEach((vote) => {
+    const optionValue = normalizeVoteOption(vote.selectedOption || vote.decision || vote.option || 'KEEP_10');
+    if (optionValue && tally[optionValue] !== undefined) {
+      tally[optionValue] += 1;
+    }
+  });
+
+  const totalVotes = votes.length;
+  const yesVotes = tally.KEEP_10;
+  const noVotes = tally.REVIEW_RATE;
+
+  return {
+    pollId,
+    totalVotes,
+    tally,
+    percentages: {
+      KEEP_10: totalVotes ? Number(((yesVotes / totalVotes) * 100).toFixed(1)) : 0,
+      REVIEW_RATE: totalVotes ? Number(((noVotes / totalVotes) * 100).toFixed(1)) : 0
+    },
+    votes
+  };
+};
+
+const getGovernancePollPayload = async (user = null) => {
+  const results = await resolvePollResults(DEFAULT_GOVERNANCE_POLL.id);
+  const hasVoted = await getCurrentProviderVoteStatus(user, DEFAULT_GOVERNANCE_POLL.id);
+  return {
+    ...DEFAULT_GOVERNANCE_POLL,
+    hasVoted,
+    results
+  };
+};
+
 export const getCooperativeOverview = async (req, res) => {
   try {
     const completedBookings = await Booking.find({ status: 'COMPLETED' });
@@ -25,6 +103,8 @@ export const getCooperativeOverview = async (req, res) => {
       acc[v.initiativeId] = (acc[v.initiativeId] || 0) + 1;
       return acc;
     }, {});
+
+    const governancePoll = await getGovernancePollPayload();
 
     // Fetch providers from MongoDB
     const providersList = await Provider.find({});
@@ -103,6 +183,7 @@ export const getCooperativeOverview = async (req, res) => {
         averageTrustScore: inMemoryStore.cooperative.averageTrustScore || 94.2,
         fairWorkloadDistributionIndex: inMemoryStore.cooperative.fairWorkloadDistributionIndex || '87%',
         workloadDistribution,
+        currentPoll: governancePoll,
         benefitsList: [
           { title: 'Verified Work History', desc: 'Every job creates portable, verified career credentials on-platform.' },
           { title: 'CoopServe Trust Score', desc: 'Dispute-free service history increases algorithm matching priority.' },
@@ -120,6 +201,18 @@ export const getCooperativeOverview = async (req, res) => {
         ],
         communityInitiatives
       }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getActiveGovernancePoll = async (req, res) => {
+  try {
+    const poll = await getGovernancePollPayload(req.user || null);
+    return res.status(200).json({
+      success: true,
+      poll
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -165,6 +258,116 @@ export const castCooperativeVote = async (req, res) => {
   }
 };
 
+export const castGovernanceVote = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required to vote.' });
+    }
+
+    if ((req.user.role || '').toUpperCase() !== 'SERVICE_PROVIDER') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only authenticated service providers can vote on cooperative governance polls.'
+      });
+    }
+
+    const pollId = req.params?.pollId || req.body?.pollId || DEFAULT_GOVERNANCE_POLL.id;
+    if (!isActiveGovernancePoll(pollId)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Governance poll not found.'
+      });
+    }
+
+    const selectedOption = normalizeVoteOption(req.body?.selectedOption || req.body?.option || req.body?.decision);
+
+    if (!selectedOption || !DEFAULT_GOVERNANCE_POLL.options.some(option => option.value === selectedOption)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please choose a valid vote option.'
+      });
+    }
+
+    const providerId = req.user.id || req.user._id?.toString();
+    const existingVote = await CooperativeVote.findOne({
+      $or: [
+        { pollId, providerId },
+        { pollId, voterId: providerId },
+        { initiativeId: pollId, voterId: providerId }
+      ]
+    });
+
+    if (existingVote) {
+      const results = await resolvePollResults(pollId);
+      return res.status(409).json({
+        success: false,
+        message: 'This provider has already voted on the active governance poll.',
+        vote: existingVote,
+        poll: { ...DEFAULT_GOVERNANCE_POLL, hasVoted: true, results }
+      });
+    }
+
+    let vote;
+    try {
+      vote = await CooperativeVote.create({
+        pollId,
+        initiativeId: pollId,
+        initiativeTitle: DEFAULT_GOVERNANCE_POLL.question,
+        providerId,
+        voterId: providerId,
+        voterName: req.user.name || 'Provider',
+        voterRole: req.user.role || 'SERVICE_PROVIDER',
+        selectedOption,
+        optionLabel: DEFAULT_GOVERNANCE_POLL.options.find(option => option.value === selectedOption)?.label || selectedOption,
+        decision: selectedOption === 'KEEP_10' ? 'YES' : 'NO',
+        voteWeight: 1
+      });
+    } catch (err) {
+      if (err?.code === 11000) {
+        const results = await resolvePollResults(pollId);
+        return res.status(409).json({
+          success: false,
+          message: 'This provider has already voted on the active governance poll.',
+          poll: { ...DEFAULT_GOVERNANCE_POLL, hasVoted: true, results }
+        });
+      }
+      throw err;
+    }
+
+    const results = await resolvePollResults(pollId);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Your governance vote was recorded successfully.',
+      vote,
+      poll: { ...DEFAULT_GOVERNANCE_POLL, hasVoted: true, results }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getGovernanceResults = async (req, res) => {
+  try {
+    const pollId = req.params?.pollId || DEFAULT_GOVERNANCE_POLL.id;
+    if (!isActiveGovernancePoll(pollId)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Governance poll not found.'
+      });
+    }
+
+    const results = await resolvePollResults(pollId);
+    const hasVoted = req.user ? await getCurrentProviderVoteStatus(req.user, pollId) : false;
+    return res.status(200).json({
+      success: true,
+      poll: { ...DEFAULT_GOVERNANCE_POLL, hasVoted, results }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const getCooperativeVotes = async (req, res) => {
   try {
     const initiativeId = req.query?.initiativeId || req.params?.id;
@@ -187,4 +390,25 @@ export const getCooperativeVotes = async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
+};
+
+const getCurrentProviderVoteStatus = async (user, pollId) => {
+  if (!user || !pollId || String(user.role || '').toUpperCase() !== 'SERVICE_PROVIDER') {
+    return false;
+  }
+
+  const providerId = user.id || user._id?.toString();
+  if (!providerId) {
+    return false;
+  }
+
+  const existingVote = await CooperativeVote.findOne({
+    $or: [
+      { pollId, providerId },
+      { pollId, voterId: providerId },
+      { initiativeId: pollId, voterId: providerId }
+    ]
+  }).select('_id');
+
+  return Boolean(existingVote);
 };

@@ -63,7 +63,8 @@ export const CooperativeHub = () => {
     workloadDistribution = [],
     benefitsList = [],
     trainingPrograms = [],
-    communityInitiatives = []
+    communityInitiatives = [],
+    currentPoll = null
   } = coopData || {};
 
   const handleVote = () => {
@@ -148,6 +149,49 @@ export const CooperativeHub = () => {
           variant="warning"
         />
       </div>
+
+      {coopData?.currentPoll && (
+        <Card className="p-5 border border-emerald-200 bg-emerald-50/60 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Governance Snapshot</p>
+              <h3 className="text-lg font-black text-slate-900 mt-1">{coopData.currentPoll.title}</h3>
+            </div>
+            <Badge variant="success" size="sm">{coopData.currentPoll.status}</Badge>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-white border border-emerald-100 p-3">
+              <p className="text-sm font-bold text-slate-800">{coopData.currentPoll.question}</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {coopData.currentPoll.options.map((option) => (
+                <div key={option.value} className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span className="font-semibold text-slate-800">{option.label}</span>
+                    <span className="font-bold text-slate-900">{coopData.currentPoll.results?.tally?.[option.value] ?? 0}</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-600"
+                      style={{ width: `${coopData.currentPoll.results?.percentages?.[option.value] ?? 0}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    {`${Number(coopData.currentPoll.results?.percentages?.[option.value] || 0).toFixed(1)}% of votes`}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-slate-600 border-t border-emerald-100 pt-3">
+              <span>Total provider votes</span>
+              <span className="font-bold text-slate-900">{coopData.currentPoll.results?.totalVotes ?? 0}</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* SECTION 1: FAIR WORKLOAD DISTRIBUTION & SMART MATCHING EXPLANATION */}
       <div className="space-y-4">

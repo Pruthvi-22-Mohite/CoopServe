@@ -146,3 +146,41 @@ export const isUserAuthorizedForBooking = async (user, booking) => {
   return false;
 };
 
+export const optionalAuthenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    let user = null;
+    if (mongoose.isValidObjectId(decoded.id)) {
+      user = await User.findOne({ $or: [{ _id: decoded.id }, { id: decoded.id }] });
+    } else {
+      user = await User.findOne({ id: decoded.id });
+    }
+
+    if (!user) {
+      user = inMemoryStore.findUserById(decoded.id);
+    }
+
+    if (!user) {
+      return next();
+    }
+
+    const userObj = user.toObject ? user.toObject() : user;
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    req.user = userObj;
+    return next();
+  } catch (err) {
+    return next();
+  }
+};
+
