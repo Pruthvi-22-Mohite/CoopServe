@@ -1,9 +1,12 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import { randomUUID } from 'node:crypto';
 import User from '../models/User.js';
+import Provider from '../models/Provider.js';
 import { inMemoryStore } from '../store/inMemoryStore.js';
 import { DEMO_ACCOUNTS, ROLES, SUPPORTED_LOCATIONS } from '../config/constants.js';
+import { geocodePlace } from '../utils/geolocation.js';
 
 const generateAccessToken = (user) => {
   const userId = user.id || (user._id ? user._id.toString() : '');
@@ -122,6 +125,83 @@ export const login = async (req, res) => {
   }
 };
 
+export const adminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both administrator email and password.'
+      });
+    }
+
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      user = inMemoryStore.findUserByEmail(email);
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid administrative credentials.'
+      });
+    }
+
+    // Strict Admin Role Isolation (Requirement 2)
+    if (user.role !== ROLES.ADMIN) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access Restricted: This portal is restricted to authorized Cooperative Administrators. Customers and Service Providers must log in through the Citizen / Member portal.'
+      });
+    }
+
+    if (user.isDemoAccount) {
+      const isBcryptMatch = await bcrypt.compare(password, user.password).catch(() => false);
+      const isDemoMatch = user.password === password || password === 'demo123' || password === 'password123' || isBcryptMatch;
+      if (!isDemoMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid administrative password.'
+        });
+      }
+    } else {
+      const isPasswordMatch = await bcrypt.compare(password, user.password);
+      if (!isPasswordMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid administrative credentials. Password does not match.'
+        });
+      }
+    }
+
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    if (!userObj.id && userObj._id) {
+      userObj.id = userObj._id.toString();
+    }
+
+    const accessToken = generateAccessToken(userObj);
+    const refreshToken = generateRefreshToken(userObj);
+    setRefreshTokenCookie(res, refreshToken);
+
+    const { password: _, ...userWithoutPassword } = userObj;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Administrative authentication successful',
+      token: accessToken,
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during administrative authentication.',
+      error: error.message
+    });
+  }
+};
+
 export const demoLogin = async (req, res) => {
   try {
     const { role } = req.params;
@@ -187,6 +267,7 @@ export const register = async (req, res) => {
       customSkill,
       lat,
       lng,
+      vehicleAvailable,
       trustedContact
     } = req.body;
 
@@ -254,15 +335,36 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Compute formatted location string
-    const stateVal = state || 'Maharashtra';
-    const cityVal = city || 'Pune';
+    // Compute formatted location string without hardcoded Pune defaults
+    const stateVal = state ? state.trim() : '';
+    const cityVal = city ? city.trim() : '';
     const neighbourhoodVal = neighbourhood ? neighbourhood.trim() : '';
-    const computedLocation = neighbourhoodVal
-      ? `${neighbourhoodVal}, ${cityVal}, ${stateVal}`
-      : (location || `${cityVal}, ${stateVal}`);
+    const parts = [neighbourhoodVal, cityVal, stateVal].filter(Boolean);
+    const computedLocation = parts.length > 0 ? parts.join(', ') : (location ? location.trim() : '');
 
     const effectiveSkill = skill === 'Other' && customSkill ? customSkill.trim() : (skill || 'General Services');
+    const workerId = isProvider ? `WORKER-${new Date().getFullYear()}-${randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase()}` : '';
+    const hasVehicle = isProvider && vehicleAvailable === true;
+    const skillText = effectiveSkill.toLowerCase();
+    const providerCategories = isProvider
+      ? [
+          skillText.includes('electric') ? 'electrical' : '',
+          skillText.includes('plumb') || skillText.includes('pipe') ? 'plumbing' : '',
+          skillText.includes('clean') || skillText.includes('sanit') ? 'cleaning' : '',
+          skillText.includes('garden') || skillText.includes('hort') ? 'gardening' : '',
+          skillText.includes('carpent') || skillText.includes('wood') ? 'carpentry' : '',
+          skillText.includes('paint') ? 'painting' : '',
+          skillText.includes('appliance') || skillText.includes('ac ') ? 'appliance' : '',
+          skillText.includes('maint') ? 'maintenance' : ''
+        ].filter(Boolean)
+      : [];
+    let resolvedLat = typeof lat === 'number' ? lat : (lat ? parseFloat(lat) : null);
+    let resolvedLng = typeof lng === 'number' ? lng : (lng ? parseFloat(lng) : null);
+    if (isProvider && (!Number.isFinite(resolvedLat) || !Number.isFinite(resolvedLng))) {
+      const coordinates = await geocodePlace([neighbourhoodVal, cityVal, stateVal].filter(Boolean).join(', '));
+      resolvedLat = coordinates?.latitude ?? null;
+      resolvedLng = coordinates?.longitude ?? null;
+    }
 
     const userData = {
       name: name.trim(),
@@ -274,8 +376,8 @@ export const register = async (req, res) => {
       city: cityVal,
       neighbourhood: neighbourhoodVal,
       location: computedLocation,
-      lat: typeof lat === 'number' ? lat : (lat ? parseFloat(lat) : null),
-      lng: typeof lng === 'number' ? lng : (lng ? parseFloat(lng) : null),
+      lat: resolvedLat,
+      lng: resolvedLng,
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name.trim())}`,
       isDemoAccount: false,
       tokenVersion: 0,
@@ -284,10 +386,13 @@ export const register = async (req, res) => {
         phone: trustedContact?.phone ? trustedContact.phone.trim() : ''
       },
       ...(mappedRole === ROLES.SERVICE_PROVIDER && {
+        workerId,
+        vehicleAvailable: hasVehicle,
         skill: effectiveSkill,
+        categories: providerCategories,
         customSkill: customSkill ? customSkill.trim() : '',
         trustScore: 85,
-        rating: 5.0,
+        rating: 0,
         reviewsCount: 0,
         jobsCompleted: 0,
         isVerified: false,
@@ -296,11 +401,35 @@ export const register = async (req, res) => {
         startingPrice: 299
       }),
       ...(mappedRole === ROLES.CUSTOMER && {
-        rewardsPoints: 100
+        rewardsPoints: 0
       })
     };
 
     const newUser = await User.create(userData);
+
+    if (mappedRole === ROLES.SERVICE_PROVIDER) {
+      await Provider.create({
+        id: workerId,
+        userId: newUser.id || newUser._id.toString(),
+        workerId,
+        name: newUser.name,
+        email: newUser.email,
+        phone: newUser.phone,
+        skill: effectiveSkill,
+        location: computedLocation,
+        serviceAreas: neighbourhoodVal ? [neighbourhoodVal] : [],
+        latitude: newUser.lat,
+        longitude: newUser.lng,
+        vehicleAvailable: hasVehicle,
+        coopMemberId: userData.coopMemberId,
+        startingPrice: 299,
+        rating: 0,
+        reviewsCount: 0,
+        jobsCompleted: 0,
+        isVerified: false,
+        isAvailable: true
+      });
+    }
     const userObj = newUser.toObject();
     if (!userObj.id && userObj._id) {
       userObj.id = userObj._id.toString();

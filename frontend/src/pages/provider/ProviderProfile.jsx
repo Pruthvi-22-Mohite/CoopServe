@@ -29,7 +29,8 @@ export const ProviderProfile = () => {
     name: 'Rahul Sharma',
     phone: '+91 98111 22334',
     skill: 'Electrician & Home Wiring',
-    location: 'Shivajinagar, Pune'
+    location: '',
+    vehicleAvailable: false
   });
 
   useEffect(() => {
@@ -43,7 +44,8 @@ export const ProviderProfile = () => {
             name: res.stats.provider.name || 'Rahul Sharma',
             phone: '+91 98111 22334',
             skill: res.stats.provider.skill || 'Electrician & Home Wiring',
-            location: 'Shivajinagar, Pune'
+            location: res.stats.provider.location || '',
+            vehicleAvailable: res.stats.provider.vehicleAvailable ?? false
           });
         }
       } catch (err) {
@@ -55,13 +57,17 @@ export const ProviderProfile = () => {
     fetchProfile();
   }, []);
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      await api.updateProviderAvailability({ vehicleAvailable: formData.vehicleAvailable });
       setIsSaving(false);
       showToast('Worker profile updated successfully!', 'success');
-    }, 600);
+    } catch (err) {
+      setIsSaving(false);
+      showToast(err.message || 'Failed to update worker profile', 'error');
+    }
   };
 
   if (isLoading) {
@@ -100,7 +106,7 @@ export const ProviderProfile = () => {
               <p className="text-xs font-bold text-emerald-800">{formData.skill}</p>
               <div className="mt-2 flex items-center justify-center gap-1.5">
                 <Badge variant="coop" size="sm">
-                  {provider.coopMemberId || 'COOP-MH-2024-001'}
+                  {provider.workerId || provider.id}
                 </Badge>
                 <Badge variant="protected" size="sm">
                   90% Direct Payout
@@ -113,11 +119,11 @@ export const ProviderProfile = () => {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-indigo-900">CoopServe Trust Score</span>
                 <span className="text-base font-black text-indigo-700">
-                  {provider.trustScore || 94}/100
+                  {provider.trustScore || 0}/100
                 </span>
               </div>
               <p className="text-[11px] text-indigo-800/80 leading-relaxed">
-                ✓ 98% Job Completion • 4.88 ⭐ Rating • 100% On-time Arrival
+                Vehicle available: {provider.vehicleAvailable ? 'Yes' : 'No'}
               </p>
             </div>
           </Card>
@@ -157,12 +163,17 @@ export const ProviderProfile = () => {
               </div>
 
               <Input
-                label="Primary Base Locality in Pune"
+                label="Primary Base Location"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 leftIcon={<MapPin className="w-4 h-4" />}
                 required
               />
+
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={formData.vehicleAvailable} onChange={(e) => setFormData({ ...formData, vehicleAvailable: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                Vehicle available for service visits
+              </label>
 
               <div className="pt-4 border-t border-slate-100 flex justify-end">
                 <Button

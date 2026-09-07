@@ -45,9 +45,11 @@ export const ProviderEarnings = () => {
   }
 
   const {
-    grossPayments = 39000,
-    workerNetEarnings = 35100,
-    platformOps = 3900,
+    grossPayments = 0,
+    workerNetEarnings = 0,
+    platformOps = 0,
+    availablePayout = 0,
+    pendingPayout = 0,
     payoutAccount = {},
     breakdownList = []
   } = earningsData || {};
@@ -89,10 +91,10 @@ export const ProviderEarnings = () => {
           variant="info"
         />
         <StatCard
-          title="Rating Quality Incentive"
-          value="₹3,500"
+          title="Available Payout"
+          value={`₹${availablePayout.toLocaleString()}`}
           icon={HeartHandshake}
-          trend={{ direction: 'up', text: '5-Star Quality Benchmark' }}
+          trend={{ direction: 'up', text: `${pendingPayout.toLocaleString()} pending payout` }}
           variant="warning"
         />
       </div>
@@ -123,10 +125,10 @@ export const ProviderEarnings = () => {
               <Building className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-900">{payoutAccount.bankName || 'HDFC Bank Ltd'}</h4>
-              <p className="text-xs text-slate-500">Account: {payoutAccount.accountNumberMasked || '•••• 4102'} • IFSC: {payoutAccount.ifscCode || 'HDFC0001234'}</p>
+              <h4 className="font-bold text-sm text-slate-900">Payout summary</h4>
+              <p className="text-xs text-slate-500">Available: ₹{availablePayout.toLocaleString()} • Pending: ₹{pendingPayout.toLocaleString()}</p>
               <p className="text-xs text-emerald-700 font-bold mt-1">
-                ✓ Auto-settlement schedule: {payoutAccount.nextPayoutDate || 'Weekly on Friday'}
+                ✓ Calculated from completed booking and payment records
               </p>
             </div>
           </div>
@@ -178,7 +180,7 @@ export const ProviderEarnings = () => {
                   <span className="font-semibold text-slate-700">₹{row.platformOps}</span>
                 </div>
                 <div>
-                  <Badge variant={row.status === 'PAID_OUT' ? 'success' : 'protected'} size="sm">
+                  <Badge variant={row.status === 'AVAILABLE' ? 'success' : row.status === 'CANCELLED' || row.status === 'PAYMENT_FAILED' ? 'danger' : 'protected'} size="sm">
                     {row.status.replace('_', ' ')}
                   </Badge>
                 </div>

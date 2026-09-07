@@ -50,10 +50,10 @@ export const CustomerNotifications = () => {
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n))
         );
-        showToast('Notification marked as read', 'info');
+        showToast(t('notifications_marked_read'), 'info');
       }
     } catch (err) {
-      showToast('Failed to update notification', 'error');
+      showToast(t('notifications_update_failed'), 'error');
     }
   };
 
@@ -71,23 +71,23 @@ export const CustomerNotifications = () => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   if (isLoading) {
-    return <LoadingState message="Loading your notifications..." />;
+    return <LoadingState message={t('common_loading')} />;
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={t('nav_notifications')}
-        description="Stay updated with your service dispatch timings, cooperative rewards, and verified receipt records."
-        breadcrumbs={['Home', 'Notifications']}
+        description={t('notifications_description')}
+        breadcrumbs={[t('nav_home'), t('nav_notifications')]}
         badge={
           unreadCount > 0 ? (
             <Badge variant="danger" size="sm">
-              {unreadCount} Unread
+              {unreadCount} {t('notifications_unread')}
             </Badge>
           ) : (
             <Badge variant="success" size="sm">
-              All Caught Up
+              {t('notifications_all_caught_up')}
             </Badge>
           )
         }
@@ -96,8 +96,8 @@ export const CustomerNotifications = () => {
       {notifications.length === 0 ? (
         <EmptyState
           icon={Bell}
-          title="No notifications right now"
-          description="You will receive alerts here when your technician is assigned, on the way, or finishes a job."
+          title={t('notifications_empty_title')}
+          description={t('notifications_empty_description')}
         />
       ) : (
         <div className="space-y-3 max-w-4xl">
@@ -133,7 +133,7 @@ export const CustomerNotifications = () => {
                   onClick={() => handleMarkAsRead(n.id)}
                   className="shrink-0 text-xs text-emerald-700 hover:bg-emerald-100"
                 >
-                  <Check className="w-3.5 h-3.5 mr-1" /> Mark Read
+                  <Check className="w-3.5 h-3.5 mr-1" /> {t('notifications_mark_read')}
                 </Button>
               )}
             </Card>

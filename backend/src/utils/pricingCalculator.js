@@ -48,7 +48,7 @@ export const calculateTravelFee = (distanceKm) => {
  */
 export const calculateBookingPrice = ({
   basePrice = 400,
-  distanceKm = 3.2,
+  distanceKm = 0,
   extraCharges = 0
 }) => {
   const base = Math.max(0, Math.round(Number(basePrice) || 0));
@@ -60,13 +60,26 @@ export const calculateBookingPrice = ({
   const platformFee = Math.round(customerTotal * (PLATFORM_FEE_PERCENT / 100));
   const workerEarnings = customerTotal - platformFee;
 
+  // 25% upfront customer payment (Requirement 8)
+  const upfrontPayable = Math.round(customerTotal * 0.25);
+  const remainingPayable = customerTotal - upfrontPayable;
+
+  // Cancellation charges are 10% of the amount paid upfront.
+  const cancellationDeduction = Math.round(upfrontPayable * 0.10);
+  const cancellationRefund = Math.max(0, upfrontPayable - cancellationDeduction);
+
   return {
     basePrice: base,
     distanceKm: dist,
     travelFee,
     extraCharges: extra,
     customerTotal,
-    customerPayment: customerTotal, // backward compatibility
+    totalBookingAmount: customerTotal,
+    upfrontPayable,
+    customerPayment: upfrontPayable, // 25% payable upfront by customer
+    remainingPayable,
+    cancellationDeduction,
+    cancellationRefund,
     platformFee,
     platformOperations: platformFee, // backward compatibility
     workerEarnings

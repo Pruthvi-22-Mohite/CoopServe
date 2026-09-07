@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useAccessibility } from '../../context/AccessibilityContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Card } from '../../components/common/Card';
@@ -11,20 +11,16 @@ import {
   Mail,
   Lock,
   ArrowRight,
-  UserCheck,
-  Wrench,
   Shield,
   Sparkles,
-  Zap,
   Users,
   Percent,
-  CheckCircle2,
-  Glasses
+  CheckCircle2
 } from 'lucide-react';
 
 export const Login = () => {
-  const { login, demoLogin, isLoading } = useAuth();
-  const { isElderlyMode, toggleAccessibilityMode } = useAccessibility();
+  const { login, isLoading } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,14 +35,7 @@ export const Login = () => {
       else if (res.user.role === 'ADMIN') navigate('/admin/dashboard');
       else navigate('/customer/dashboard');
     } else {
-      setError(res.message || 'Login failed');
-    }
-  };
-
-  const handleDemoClick = async (role, destination) => {
-    const res = await demoLogin(role, true);
-    if (res.success) {
-      navigate(destination);
+      setError(res.message || t('auth_login_failed'));
     }
   };
 
@@ -70,22 +59,22 @@ export const Login = () => {
                 <h1 className="text-2xl font-black tracking-tight flex items-center gap-1.5">
                   Coop<span className="text-brand-emerald">Serve</span>
                   <span className="text-[10px] uppercase font-bold tracking-widest bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    Cooperative
+                    {t('auth_cooperative')}
                   </span>
                 </h1>
-                <p className="text-xs text-slate-300 font-medium">Gig Services Platform</p>
+                <p className="text-xs text-slate-300 font-medium">{t('auth_platform_tagline')}</p>
               </div>
             </div>
 
             <div className="space-y-2.5">
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.15]">
-                Fair work. <br />
+                {t('auth_fair_work')} <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-200">
-                  Direct livelihoods.
+                  {t('auth_direct_livelihoods')}
                 </span>
               </h2>
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl">
-                CoopServe replaces exploitative gig algorithms with democratic cooperative ownership. Certified service professionals receive fair wages, and customers get guaranteed quality with Protected Bookings.
+                {t('auth_hero_description')}
               </p>
             </div>
 
@@ -96,8 +85,8 @@ export const Login = () => {
                   <Users className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Cooperative-owned, not corporate</h3>
-                  <p className="text-xs text-slate-300 mt-0.5">Members co-govern fee rules, dividend allocations, and trust standards democratically.</p>
+                  <h3 className="text-sm font-bold text-white">{t('auth_feature_cooperative')}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">{t('auth_feature_cooperative_text')}</p>
                 </div>
               </div>
 
@@ -106,8 +95,8 @@ export const Login = () => {
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">AI-matched in seconds</h3>
-                  <p className="text-xs text-slate-300 mt-0.5">Intelligent proximity and reputation routing without predatory surge pricing or penalty locks.</p>
+                  <h3 className="text-sm font-bold text-white">{t('auth_feature_ai')}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">{t('auth_feature_ai_text')}</p>
                 </div>
               </div>
 
@@ -116,8 +105,8 @@ export const Login = () => {
                   <Percent className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Transparent 90/10 earnings split</h3>
-                  <p className="text-xs text-slate-300 mt-0.5">90% net take-home to local workers on every job; 10% operational overhead with zero hidden deductions.</p>
+                  <h3 className="text-sm font-bold text-white">{t('auth_feature_earnings')}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">{t('auth_feature_earnings_text')}</p>
                 </div>
               </div>
 
@@ -126,8 +115,8 @@ export const Login = () => {
                   <Shield className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Verified & insured workers</h3>
-                  <p className="text-xs text-slate-300 mt-0.5">Every booking includes cooperative insurance protection, skill badges, and real community feedback.</p>
+                  <h3 className="text-sm font-bold text-white">{t('auth_feature_verified')}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">{t('auth_feature_verified_text')}</p>
                 </div>
               </div>
             </div>
@@ -137,11 +126,11 @@ export const Login = () => {
           <div className="relative z-10 pt-6 mt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>128 Certified Co-op Professionals in Pune</span>
+              <span>{t('auth_certified_professionals')}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-slate-300">Protected Escrow & UPI Enabled</span>
+              <span className="text-slate-300">{t('auth_payment_enabled')}</span>
             </div>
           </div>
         </div>
@@ -150,86 +139,17 @@ export const Login = () => {
         <div className="lg:col-span-5 flex flex-col justify-center">
           <Card className="shadow-2xl border-white/20 bg-white/95 backdrop-blur-xl p-6 sm:p-8 rounded-3xl relative">
 
-            {/* Header with Title and Mode Indicator */}
-            <div className="flex items-start justify-between gap-2 mb-5">
-              <div>
-                <Badge variant="coop" size="sm" className="mb-1.5">Member Portal</Badge>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Sign In</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Access your dashboard or use 1-click demo roles</p>
-              </div>
-
-              {/* Elderly EZ Mode Quick Toggle */}
-              <button
-                type="button"
-                onClick={toggleAccessibilityMode}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all ${isElderlyMode
-                  ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                title="Toggle larger fonts, bigger buttons, and simplified layout"
-              >
-                <Glasses className={`w-3.5 h-3.5 ${isElderlyMode ? 'text-amber-700' : 'text-slate-500'}`} />
-                <span>{isElderlyMode ? 'EZ Mode ON' : 'EZ Mode'}</span>
-              </button>
+            {/* Header with Title */}
+            <div className="mb-5">
+              <Badge variant="coop" size="sm" className="mb-1.5">{t('auth_cooperative')}</Badge>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">{t('auth_sign_in')}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('auth_new_member')}</p>
             </div>
-
-            {/* 1-Click Demo Logins — hidden in judge builds, toggled via VITE_SHOW_DEMO_ACCESS */}
-            {import.meta.env.VITE_SHOW_DEMO_ACCESS === 'true' && (
-              <div className="space-y-2 mb-5">
-                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-amber-500" /> Fast Role Access
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-normal">No password needed</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleDemoClick('CUSTOMER', '/customer/dashboard')}
-                    disabled={isLoading}
-                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <div className="flex items-center gap-1 text-emerald-800 font-bold text-xs">
-                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                      <span>Customer</span>
-                    </div>
-                    <p className="text-[10px] text-emerald-700 mt-0.5 truncate">Ananya S.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDemoClick('SERVICE_PROVIDER', '/provider/dashboard')}
-                    disabled={isLoading}
-                    className="p-2.5 rounded-xl border border-teal-200 bg-teal-50/70 hover:bg-teal-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <div className="flex items-center gap-1 text-teal-800 font-bold text-xs">
-                      <Wrench className="w-3.5 h-3.5 shrink-0" />
-                      <span>Worker</span>
-                    </div>
-                    <p className="text-[10px] text-teal-700 mt-0.5 truncate">Rahul S.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDemoClick('ADMIN', '/admin/dashboard')}
-                    disabled={isLoading}
-                    className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100/90 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <div className="flex items-center gap-1 text-rose-800 font-bold text-xs">
-                      <Shield className="w-3.5 h-3.5 shrink-0" />
-                      <span>Admin</span>
-                    </div>
-                    <p className="text-[10px] text-rose-700 mt-0.5 truncate">Operations</p>
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Divider */}
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
-              <div className="relative flex justify-center text-[11px] uppercase"><span className="bg-white/95 px-2 text-slate-400 font-semibold tracking-wider">Or enter credentials</span></div>
+              <div className="relative flex justify-center text-[11px] uppercase"><span className="bg-white/95 px-2 text-slate-400 font-semibold tracking-wider">{t('auth_enter_credentials')}</span></div>
             </div>
 
             {error && (
@@ -240,9 +160,9 @@ export const Login = () => {
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <Input
-                label="Email Address"
+                label={t('auth_email')}
                 type="email"
-                placeholder="customer@coopserve.demo"
+                placeholder={t('auth_email_placeholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 leftIcon={<Mail className="w-4 h-4" />}
@@ -252,13 +172,13 @@ export const Login = () => {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                    Password
+                    {t('auth_password')}
                   </label>
                   <Link
                     to="/forgot-password"
                     className="text-xs font-bold text-brand-emerald hover:text-emerald-700 hover:underline"
                   >
-                    Forgot password?
+                    {t('auth_forgot_password')}
                   </Link>
                 </div>
                 <Input
@@ -278,15 +198,26 @@ export const Login = () => {
                 isLoading={isLoading}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Sign In to Platform
+                {t('auth_sign_in_button')}
               </Button>
             </form>
 
-            <div className="mt-5 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
-              New to CoopServe?{' '}
-              <Link to="/register" className="font-bold text-brand-emerald hover:text-emerald-700 underline">
-                Create new account
-              </Link>
+            <div className="mt-5 pt-4 border-t border-slate-100 space-y-3 text-center text-xs text-slate-500">
+              <div>
+                {t('auth_new_member')}{' '}
+                <Link to="/register" className="font-bold text-brand-emerald hover:text-emerald-700 underline">
+                  {t('auth_create_account')}
+                </Link>
+              </div>
+              <div className="pt-2 border-t border-slate-100">
+                <Link
+                  to="/admin/login"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 hover:underline"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  {t('auth_admin_login')}
+                </Link>
+              </div>
             </div>
           </Card>
         </div>

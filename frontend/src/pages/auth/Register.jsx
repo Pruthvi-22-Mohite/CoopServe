@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useAccessibility } from '../../context/AccessibilityContext';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Card } from '../../components/common/Card';
@@ -21,7 +21,6 @@ import {
   Percent,
   Shield,
   CheckCircle2,
-  Glasses,
   LocateFixed,
   Heart,
   ChevronDown
@@ -108,7 +107,7 @@ function NativeSelect({ label, value, onChange, options, disabled, helperText, i
 // ---------------------------------------------------------------------------
 export const Register = () => {
   const { register, isLoading } = useAuth();
-  const { isElderlyMode, toggleAccessibilityMode } = useAccessibility();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   // ── Form state ────────────────────────────────────────────────────────────
@@ -118,22 +117,24 @@ export const Register = () => {
     email:         '',
     phone:         '',
     password:      '',
-    state:         'Maharashtra',
-    city:          'Pune',
+    state:         '',
+    city:          '',
     neighbourhood: '',
     lat:           null,
     lng:           null,
     skill:         'Electrician',
     customSkill:   '',
-    trustedName:   '',
-    trustedPhone:  '',
+    vehicleAvailable: false,
   });
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [errors,         setErrors]         = useState({});
   const [globalError,    setGlobalError]    = useState('');
   const [geoStatus,      setGeoStatus]      = useState('idle'); // idle | loading | ok | error
+  const [locationSource, setLocationSource] = useState('manual');
+  const [manualArea,     setManualArea]     = useState('');
   const [neighbourhoods, setNeighbourhoods] = useState([]);
+  const [locationCatalog, setLocationCatalog] = useState(null);
   const [locLoading,     setLocLoading]     = useState(true);
 
   // ── Fetch location data ───────────────────────────────────────────────────
@@ -141,19 +142,17 @@ export const Register = () => {
     api.getLocations()
       .then((data) => {
         if (data?.locations) {
-          const mh   = data.locations.find((l) => l.state === 'Maharashtra');
-          const pune = mh?.cities?.find((c) => c.city === 'Pune');
-          if (pune?.neighbourhoods?.length) {
-            const hoods = pune.neighbourhoods;
-            setNeighbourhoods(hoods);
-            setForm((f) => ({ ...f, neighbourhood: hoods[0] }));
-          }
+          setLocationCatalog(data.locations);
+          const defaultState = data.locations.states?.find((item) => item.enabled)?.name || '';
+          const defaultCity = defaultState
+            ? data.locations.cities?.[data.locations.states?.find((item) => item.name === defaultState)?.code]?.find((item) => item.enabled)?.name || ''
+            : '';
+          const defaultCityId = defaultCity ? defaultCity.toLowerCase().replace(/\s+/g, '_') : '';
+          setNeighbourhoods(data.locations.neighbourhoods?.[defaultCityId] || []);
         }
       })
       .catch(() => {
-        const fallback = ['Kothrud','Shivajinagar','Aundh','Baner','Hadapsar','Wanowrie','Pimpri','Chinchwad','Wakad','Hinjawadi','Koregaon Park','Viman Nagar','Kharadi','Magarpatta','Deccan'];
-        setNeighbourhoods(fallback);
-        setForm((f) => ({ ...f, neighbourhood: fallback[0] }));
+        setNeighbourhoods([]);
       })
       .finally(() => setLocLoading(false));
   }, []);
@@ -165,14 +164,41 @@ export const Register = () => {
     setErrors((errs) => ({ ...errs, [field]: '' }));
   }, []);
 
+  const locationStates = locationCatalog?.states?.filter((item) => item.enabled) || [];
+  const selectedStateCode = locationStates.find((item) => item.name === form.state)?.code;
+  const locationCities = selectedStateCode
+    ? locationCatalog?.cities?.[selectedStateCode]?.filter((item) => item.enabled) || []
+    : [];
+
   // ── Geolocation ───────────────────────────────────────────────────────────
   const captureLocation = () => {
     if (!navigator.geolocation) { setGeoStatus('error'); return; }
     setGeoStatus('loading');
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setForm((f) => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }));
-        setGeoStatus('ok');
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=14&addressdetails=1`, {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' }
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) throw new Error(`Reverse geocoding failed: ${response.status}`);
+          const data = await response.json();
+          const address = data.address || {};
+          const resolvedState = address.state || '';
+          const resolvedCity = address.city || address.town || address.municipality || address.village || address.state_district || '';
+          const resolvedArea = address.suburb || address.neighbourhood || address.city_district || address.residential || address.quarter || address.county || '';
+          if (!resolvedState || !resolvedCity || !resolvedArea) throw new Error('General location unavailable');
+          setForm((f) => ({ ...f, state: resolvedState, city: resolvedCity, neighbourhood: resolvedArea, lat: latitude, lng: longitude }));
+          setManualArea('');
+          setLocationSource('gps');
+          setGeoStatus('ok');
+        } catch {
+          setGeoStatus('error');
+        }
       },
       () => setGeoStatus('error'),
       { timeout: 8000 }
@@ -185,20 +211,19 @@ export const Register = () => {
   // ── Validate ──────────────────────────────────────────────────────────────
   const validate = () => {
     const errs = {};
-    if (!form.name.trim())                                         errs.name          = 'Full name is required.';
-    if (!form.email.trim())                                        errs.email         = 'Email address is required.';
-    else if (!EMAIL_RE.test(form.email))                           errs.email         = 'Enter a valid email address.';
-    if (!form.phone.trim())                                        errs.phone         = 'Phone number is required.';
-    else if (!PHONE_RE.test(form.phone.replace(/\s/g, '')))       errs.phone         = 'Enter a valid Indian mobile number (e.g. 9876543210).';
-    if (!form.password)                                            errs.password      = 'Password is required.';
-    else if (form.password.length < 8)                             errs.password      = 'Password must be at least 8 characters.';
+    if (!form.name.trim())                                         errs.name          = t('validation_full_name_required');
+    if (!form.email.trim())                                        errs.email         = t('validation_email_required');
+    else if (!EMAIL_RE.test(form.email))                           errs.email         = t('validation_email_invalid');
+    if (!form.phone.trim())                                        errs.phone         = t('validation_phone_required');
+    else if (!PHONE_RE.test(form.phone.replace(/\s/g, '')))       errs.phone         = t('validation_phone_invalid');
+    if (!form.password)                                            errs.password      = t('validation_password_required');
+    else if (form.password.length < 8)                             errs.password      = t('validation_password_length');
     else if (!/[a-zA-Z]/.test(form.password) || !/\d/.test(form.password))
-                                                                   errs.password      = 'Password must contain at least one letter and one number.';
-    if (!form.neighbourhood)                                       errs.neighbourhood = 'Please select a neighbourhood.';
+                                                                   errs.password      = t('validation_password_requirements');
+    if (!(form.neighbourhood && form.neighbourhood !== '__manual__') && !manualArea.trim()) errs.neighbourhood = t('validation_neighbourhood_required');
+      if (!form.state || !form.city.trim() || (!(form.neighbourhood && form.neighbourhood !== '__manual__') && !manualArea.trim())) errs.neighbourhood = t('validation_location_required');
     if (role === 'SERVICE_PROVIDER' && form.skill === 'Other' && !form.customSkill.trim())
-                                                                   errs.customSkill   = 'Please specify your trade/skill.';
-    if (isElderlyMode && form.trustedPhone && !PHONE_RE.test(form.trustedPhone.replace(/\s/g, '')))
-                                                                   errs.trustedPhone  = 'Enter a valid Indian mobile number.';
+                                                                   errs.customSkill   = t('validation_skill_required');
     return errs;
   };
 
@@ -209,6 +234,25 @@ export const Register = () => {
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
 
+    const selectedArea = form.neighbourhood === '__manual__' ? manualArea.trim() : form.neighbourhood;
+    let resolvedLat = form.lat;
+    let resolvedLng = form.lng;
+    if (role === 'CUSTOMER' && (!Number.isFinite(resolvedLat) || !Number.isFinite(resolvedLng))) {
+      try {
+        const query = encodeURIComponent([selectedArea, form.city, form.state].filter(Boolean).join(', '));
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${query}`, {
+          headers: { Accept: 'application/json' }
+        });
+        const results = await response.json();
+        if (results[0]) {
+          resolvedLat = Number(results[0].lat);
+          resolvedLng = Number(results[0].lon);
+        }
+      } catch {
+        // The account can still be created; booking will request a resolvable service location.
+      }
+    }
+
     const payload = {
       name:          form.name.trim(),
       email:         form.email.trim(),
@@ -217,15 +261,13 @@ export const Register = () => {
       role,
       state:         form.state,
       city:          form.city,
-      neighbourhood: form.neighbourhood,
-      ...(form.lat !== null && { lat: form.lat }),
-      ...(form.lng !== null && { lng: form.lng }),
+      neighbourhood: selectedArea,
+      ...(Number.isFinite(resolvedLat) && { lat: resolvedLat }),
+      ...(Number.isFinite(resolvedLng) && { lng: resolvedLng }),
       ...(role === 'SERVICE_PROVIDER' && {
         skill: form.skill,
+        vehicleAvailable: form.vehicleAvailable,
         ...(form.skill === 'Other' && { customSkill: form.customSkill.trim() }),
-      }),
-      ...(isElderlyMode && (form.trustedName || form.trustedPhone) && {
-        trustedContact: { name: form.trustedName.trim(), phone: form.trustedPhone.trim() },
       }),
     };
 
@@ -234,11 +276,16 @@ export const Register = () => {
       if (res.user.role === 'SERVICE_PROVIDER') navigate('/provider/dashboard');
       else navigate('/customer/dashboard');
     } else {
-      setGlobalError(res.message || 'Registration failed. Please try again.');
+      setGlobalError(res.message || t('auth_registration_failed'));
     }
   };
 
-  const hoodOptions = neighbourhoods.map((h) => ({ value: h, label: h }));
+  const hoodOptions = [
+    ...neighbourhoods.map((h) => ({ value: h, label: h })),
+    ...(form.neighbourhood && form.neighbourhood !== '__manual__' && !neighbourhoods.includes(form.neighbourhood)
+      ? [{ value: form.neighbourhood, label: form.neighbourhood }]
+      : [])
+  ];
 
   // =========================================================================
   // Render
@@ -262,32 +309,32 @@ export const Register = () => {
                 <h1 className="text-2xl font-black tracking-tight flex items-center gap-1.5">
                   Coop<span className="text-emerald-400">Serve</span>
                   <span className="text-[10px] uppercase font-bold tracking-widest bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    Cooperative
+                    {t('auth_cooperative')}
                   </span>
                 </h1>
-                <p className="text-xs text-slate-300 font-medium">Gig Services Platform</p>
+                <p className="text-xs text-slate-300 font-medium">{t('auth_platform_tagline')}</p>
               </div>
             </div>
 
             <div className="space-y-2.5">
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.15]">
-                Join the<br />
+                {t('auth_join_cooperative')}<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-200">
-                  cooperative.
+                  {t('auth_cooperative')}.
                 </span>
               </h2>
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl">
-                CoopServe is Pune's first democratic gig cooperative — co-governed by the very workers and customers it serves. Earn fair wages, build verified trust, and access genuine livelihood protection.
+                {t('auth_hero_description')}
               </p>
             </div>
 
             {/* 4 pillars */}
             <div className="space-y-3 pt-2">
               {[
-                { icon: Users,    bg: 'bg-emerald-500/20', border: 'border-emerald-500/30', text: 'text-emerald-400', title: 'Cooperative-owned, not corporate',   body: 'Members vote on fee rules, dividend allocations, and trust standards democratically.' },
-                { icon: Sparkles, bg: 'bg-teal-500/20',    border: 'border-teal-500/30',    text: 'text-teal-400',    title: 'AI-matched in seconds',               body: 'Intelligent proximity and reputation routing — no predatory surge pricing or locks.' },
-                { icon: Percent,  bg: 'bg-cyan-500/20',    border: 'border-cyan-500/30',    text: 'text-cyan-400',    title: 'Transparent 90/10 earnings split',    body: '90% net take-home to local workers on every job; 10% overhead, zero hidden deductions.' },
-                { icon: Shield,   bg: 'bg-amber-500/20',   border: 'border-amber-500/30',   text: 'text-amber-400',   title: 'Verified & insured workers',           body: 'Every booking includes cooperative insurance, skill badges, and real community feedback.' },
+                { icon: Users,    bg: 'bg-emerald-500/20', border: 'border-emerald-500/30', text: 'text-emerald-400', title: t('auth_feature_cooperative'), body: t('auth_feature_cooperative_text') },
+                { icon: Sparkles, bg: 'bg-teal-500/20',    border: 'border-teal-500/30',    text: 'text-teal-400',    title: t('auth_feature_ai'), body: t('auth_feature_ai_text') },
+                { icon: Percent,  bg: 'bg-cyan-500/20',    border: 'border-cyan-500/30',    text: 'text-cyan-400',    title: t('auth_feature_earnings'), body: t('auth_feature_earnings_text') },
+                { icon: Shield,   bg: 'bg-amber-500/20',   border: 'border-amber-500/30',   text: 'text-amber-400',   title: t('auth_feature_verified'), body: t('auth_feature_verified_text') },
               ].map(({ icon: Icon, bg, border, text, title, body }) => (
                 <div key={title} className="flex items-start gap-3.5 p-3 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-sm">
                   <div className={`w-9 h-9 rounded-xl ${bg} border ${border} flex items-center justify-center ${text} shrink-0 mt-0.5`}>
@@ -306,11 +353,11 @@ export const Register = () => {
           <div className="relative z-10 pt-6 mt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>128 Certified Co-op Professionals in Pune</span>
+              <span>{t('auth_certified_professionals')}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-slate-300">Protected Escrow & UPI Enabled</span>
+              <span className="text-slate-300">{t('auth_payment_enabled')}</span>
             </div>
           </div>
         </div>
@@ -320,26 +367,10 @@ export const Register = () => {
           <Card className="shadow-2xl border-white/20 bg-white/95 backdrop-blur-xl p-6 sm:p-8 rounded-3xl relative">
 
             {/* Header row */}
-            <div className="flex items-start justify-between gap-2 mb-5">
-              <div>
-                <Badge variant="coop" size="sm" className="mb-1.5">New Member</Badge>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Create Account</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Join the cooperative in under 2 minutes</p>
-              </div>
-              <button
-                id="reg-ez-toggle"
-                type="button"
-                onClick={toggleAccessibilityMode}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all shrink-0 ${
-                  isElderlyMode
-                    ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-                title="Toggle larger fonts, bigger buttons, and simplified layout"
-              >
-                <Glasses className={`w-3.5 h-3.5 ${isElderlyMode ? 'text-amber-700' : 'text-slate-500'}`} />
-                <span>{isElderlyMode ? 'EZ Mode ON' : 'EZ Mode'}</span>
-              </button>
+            <div className="mb-5">
+              <Badge variant="coop" size="sm" className="mb-1.5">{t('auth_new_member')}</Badge>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">{t('auth_create_account_title')}</h2>
+              {role === 'CUSTOMER' && <p className="text-xs text-slate-500 mt-0.5">{t('auth_registration_subtitle')}</p>}
             </div>
 
             {/* Global error */}
@@ -353,7 +384,7 @@ export const Register = () => {
 
               {/* Role selector */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">I am a…</label>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">{t('auth_role_prompt')}</label>
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
                   <button
                     id="role-customer"
@@ -363,17 +394,20 @@ export const Register = () => {
                       role === 'CUSTOMER' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    🏠 Household Customer
+                    🏠 {t('auth_customer_role')}
                   </button>
                   <button
                     id="role-provider"
                     type="button"
-                    onClick={() => setRole('SERVICE_PROVIDER')}
+                    onClick={() => {
+                      setRole('SERVICE_PROVIDER');
+                      setNeighbourhoods([]);
+                    }}
                     className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${
                       role === 'SERVICE_PROVIDER' ? 'bg-white text-teal-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    ⚡ Service Worker / Pro
+                    ⚡ {t('auth_provider_role')}
                   </button>
                 </div>
               </div>
@@ -382,7 +416,7 @@ export const Register = () => {
               <div>
                 <Input
                   id="reg-name"
-                  label="Full Name"
+                  label={t('auth_full_name')}
                   type="text"
                   placeholder="e.g. Priya Sharma"
                   value={form.name}
@@ -397,7 +431,7 @@ export const Register = () => {
                 <div>
                   <Input
                     id="reg-email"
-                    label="Email Address"
+                    label={t('auth_email')}
                     type="email"
                     placeholder="priya@example.com"
                     value={form.email}
@@ -409,7 +443,7 @@ export const Register = () => {
                 <div>
                   <Input
                     id="reg-phone"
-                    label="Mobile Number"
+                    label={t('auth_mobile')}
                     type="tel"
                     placeholder="9876543210"
                     value={form.phone}
@@ -424,7 +458,7 @@ export const Register = () => {
               <div>
                 <Input
                   id="reg-password"
-                  label="Password"
+                  label={t('auth_password')}
                   type="password"
                   placeholder="Min 8 chars, 1 letter, 1 number"
                   value={form.password}
@@ -454,7 +488,7 @@ export const Register = () => {
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Service Location
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" /> {t('auth_service_location')}
                   </span>
                   <button
                     id="geo-capture-btn"
@@ -470,27 +504,43 @@ export const Register = () => {
                     }`}
                   >
                     <LocateFixed className="w-3 h-3" />
-                    {geoStatus === 'loading' ? 'Locating…'
-                      : geoStatus === 'ok'    ? 'GPS Captured ✓'
-                      : geoStatus === 'error' ? 'GPS Unavailable'
-                      : 'Use my location'}
+                    {geoStatus === 'loading' ? t('auth_locating')
+                      : geoStatus === 'ok'    ? t('auth_gps_captured')
+                      : geoStatus === 'error' ? t('auth_gps_unavailable')
+                      : t('auth_use_location')}
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <NativeSelect id="reg-state" label="State" value={form.state} onChange={set('state')}
-                    options={[{ value: 'Maharashtra', label: 'Maharashtra' }]} disabled />
-                  <NativeSelect id="reg-city" label="City" value={form.city} onChange={set('city')}
-                    options={[{ value: 'Pune', label: 'Pune' }]} disabled />
+                  <NativeSelect id="reg-state" label={t('auth_state')} value={form.state} onChange={(event) => { setLocationSource('manual'); setForm((current) => ({ ...current, state: event.target.value, city: '', neighbourhood: '', lat: null, lng: null })); }}
+                    options={[{ value: '', label: t('auth_select_state') }, ...locationStates.map((item) => ({ value: item.name, label: item.name }))]} />
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">{t('auth_city')}</label>
+                    {locationCities.length > 0 ? (
+                      <NativeSelect id="reg-city" value={form.city} onChange={(event) => { setLocationSource('manual'); const city = event.target.value; setForm((current) => ({ ...current, city, neighbourhood: '', lat: null, lng: null })); setNeighbourhoods(locationCatalog?.neighbourhoods?.[locationCities.find((item) => item.name === city)?.id] || []); }} options={[{ value: '', label: t('auth_city_placeholder') }, ...locationCities.map((item) => ({ value: item.name, label: item.name }))]} />
+                    ) : (
+                      <input id="reg-city" type="text" value={form.city} onChange={(event) => { setLocationSource('manual'); set('city')(event); }} placeholder={t('auth_city_placeholder')} className="w-full appearance-none bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all" />
+                    )}
+                  </div>
                 </div>
                 <div>
                   <NativeSelect
                     id="reg-neighbourhood"
-                    label="Neighbourhood"
+                    label={t('auth_neighbourhood')}
                     value={form.neighbourhood}
-                    onChange={set('neighbourhood')}
-                    options={locLoading ? [{ value: '', label: 'Loading…' }] : hoodOptions}
-                    disabled={locLoading || hoodOptions.length === 0}
+                    onChange={(event) => { setLocationSource('manual'); set('neighbourhood')(event); }}
+                    options={locLoading ? [{ value: '', label: t('common_loading') }] : [{ value: '', label: t('auth_select_area') }, ...hoodOptions, { value: '__manual__', label: t('auth_manual_area') }]}
+                    disabled={locLoading}
                   />
+                  {form.neighbourhood === '__manual__' && (
+                    <input
+                      id="reg-manual-area"
+                      type="text"
+                      value={manualArea}
+                      onChange={(event) => setManualArea(event.target.value)}
+                      placeholder={t('auth_area_placeholder')}
+                      className="mt-2 w-full appearance-none bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                    />
+                  )}
                   <FieldError msg={errors.neighbourhood} />
                 </div>
               </div>
@@ -520,44 +570,13 @@ export const Register = () => {
                       <FieldError msg={errors.customSkill} />
                     </div>
                   )}
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                    <input type="checkbox" checked={form.vehicleAvailable} onChange={(event) => setForm((current) => ({ ...current, vehicleAvailable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                    Vehicle available for service visits
+                  </label>
                 </div>
               )}
 
-              {/* Trusted Contact (Elderly EZ Mode) */}
-              {isElderlyMode && (
-                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2">
-                    <Heart className="w-4 h-4 text-amber-700 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-amber-900">Trusted Contact <span className="font-normal text-amber-700">(Optional)</span></p>
-                      <p className="text-[11px] text-amber-700">Someone we can contact on your behalf if needed.</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input
-                      id="reg-trusted-name"
-                      label="Contact Name"
-                      type="text"
-                      placeholder="e.g. Rakesh Sharma"
-                      value={form.trustedName}
-                      onChange={set('trustedName')}
-                      leftIcon={<User className="w-4 h-4" />}
-                    />
-                    <div>
-                      <Input
-                        id="reg-trusted-phone"
-                        label="Contact Phone"
-                        type="tel"
-                        placeholder="9876543210"
-                        value={form.trustedPhone}
-                        onChange={set('trustedPhone')}
-                        leftIcon={<Phone className="w-4 h-4" />}
-                      />
-                      <FieldError msg={errors.trustedPhone} />
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Submit */}
               <Button
@@ -568,12 +587,12 @@ export const Register = () => {
                 isLoading={isLoading}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Complete Registration & Join
+                {t('auth_complete_registration')}
               </Button>
             </form>
 
             <div className="mt-5 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
-              Already have an account?{' '}
+              {t('auth_existing_account')}{' '}
               <Link to="/login" className="font-bold text-emerald-600 hover:text-emerald-700 underline">
                 Sign In
               </Link>

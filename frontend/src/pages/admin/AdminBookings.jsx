@@ -61,6 +61,20 @@ export const AdminBookings = () => {
     }
   };
 
+  const geoReviewCount = bookings.filter((b) => b.reviewRequired).length;
+
+  const geotagStatus = (booking) => {
+    if (booking.reviewRequired) {
+      return <Badge variant="danger" size="sm">Geo Review</Badge>;
+    }
+
+    if (booking.locationVerification?.start?.status === 'VERIFIED' || booking.locationVerification?.completion?.status === 'VERIFIED') {
+      return <Badge variant="success" size="sm">Geo Verified</Badge>;
+    }
+
+    return <Badge variant="protected" size="sm">Not Checked</Badge>;
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -68,9 +82,16 @@ export const AdminBookings = () => {
         description="Inspect real-time booking statuses, transparent 88/6/6 price distributions, and customer satisfaction."
         breadcrumbs={['Home', 'Admin', 'Bookings']}
         badge={
-          <Badge variant="coop" size="sm">
-            {bookings.length} Total Bookings
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="coop" size="sm">
+              {bookings.length} Total Bookings
+            </Badge>
+            {geoReviewCount > 0 && (
+              <Badge variant="danger" size="sm">
+                {geoReviewCount} Geo Reviews
+              </Badge>
+            )}
+          </div>
         }
       />
 
@@ -99,6 +120,7 @@ export const AdminBookings = () => {
                 <th className="py-3.5 px-4">Slot</th>
                 <th className="py-3.5 px-4">Amount</th>
                 <th className="py-3.5 px-4">Service Status</th>
+                <th className="py-3.5 px-4">Geo Verification</th>
                 <th className="py-3.5 px-4">Payment</th>
                 <th className="py-3.5 px-4 text-right">Action</th>
               </tr>
@@ -125,6 +147,7 @@ export const AdminBookings = () => {
                     )}
                   </td>
                   <td className="py-3.5 px-4">{getStatusBadge(b.status)}</td>
+                  <td className="py-3.5 px-4">{geotagStatus(b)}</td>
                   <td className="py-3.5 px-4">
                     <Badge variant="success" size="sm">{b.paymentStatus || 'PAID'}</Badge>
                   </td>
@@ -183,36 +206,29 @@ export const AdminBookings = () => {
               )}
             </div>
 
-            {/* Price Split & Distance Fee Full Audit */}
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-              <span className="text-[10px] text-slate-400 uppercase font-bold">Transparent Pricing Breakdown</span>
-              <div className="space-y-1 text-slate-600">
-                <div className="flex justify-between">
-                  <span>Base Service Price</span>
-                  <span className="font-semibold text-slate-900">₹{selectedBooking.pricing?.basePrice || 400}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Distance ({selectedBooking.pricing?.distanceKm || 3.2} km) Travel Fee</span>
-                  <span className="font-semibold text-teal-800">+₹{selectedBooking.pricing?.travelFee !== undefined ? selectedBooking.pricing.travelFee : 20}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Extra Work / Material Charges</span>
-                  <span className="font-semibold text-slate-900">₹{selectedBooking.pricing?.extraCharges || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Platform Operations Fee (10%)</span>
-                  <span className="font-semibold text-slate-800">₹{selectedBooking.pricing?.platformFee || selectedBooking.pricing?.platformOperations || 42}</span>
-                </div>
-                <div className="flex justify-between text-emerald-800 font-semibold">
-                  <span>Worker Net Payout (90%)</span>
-                  <span className="font-bold text-emerald-900">₹{selectedBooking.pricing?.workerEarnings || 378}</span>
-                </div>
-                <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
-                  <span>Final Customer Total</span>
-                  <span className="text-emerald-700 font-black text-sm">₹{selectedBooking.pricing?.customerTotal || selectedBooking.pricing?.customerPayment || 420}</span>
-                </div>
+            {(selectedBooking.reviewRequired || selectedBooking.locationVerification) && (
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                <span className="text-[10px] text-amber-700 uppercase font-bold">Geotag Verification</span>
+                {selectedBooking.reviewRequired ? (
+                  <>
+                    <p className="font-bold text-amber-900">Admin review required</p>
+                    <p className="text-amber-800">{selectedBooking.reviewReason || 'Provider location was outside the approved service radius.'}</p>
+                  </>
+                ) : (
+                  <p className="font-bold text-emerald-800">Verified within service radius</p>
+                )}
+                {selectedBooking.locationVerification?.start && (
+                  <p className="text-[11px] text-slate-600">
+                    Start check: {selectedBooking.locationVerification.start.status} • {selectedBooking.locationVerification.start.distanceMeters != null ? `${Math.round(selectedBooking.locationVerification.start.distanceMeters)}m away` : 'No distance recorded'}
+                  </p>
+                )}
+                {selectedBooking.locationVerification?.completion && (
+                  <p className="text-[11px] text-slate-600">
+                    Completion check: {selectedBooking.locationVerification.completion.status} • {selectedBooking.locationVerification.completion.distanceMeters != null ? `${Math.round(selectedBooking.locationVerification.completion.distanceMeters)}m away` : 'No distance recorded'}
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
             <div className="flex justify-end pt-2 border-t border-slate-100">
               <Button variant="outline" size="sm" onClick={() => setSelectedBooking(null)}>

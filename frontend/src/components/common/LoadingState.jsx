@@ -1,7 +1,11 @@
 import React from 'react';
+import { useLanguage } from '../../context/LanguageContext';
 import { Loader2 } from 'lucide-react';
 
-export const LoadingState = ({ message = 'Loading CoopServe details...', subtext = 'Fetching verified records from decentralized network', fullScreen = false }) => {
+export const LoadingState = ({ message, subtext, fullScreen = false }) => {
+  const { t } = useLanguage();
+  const resolvedMessage = message || t('common_loading');
+  const resolvedSubtext = subtext || t('common_loading_subtext', 'Loading verified records');
   const content = (
     <div className="flex flex-col items-center justify-center p-12 text-center">
       <div className="relative mb-4">
@@ -10,8 +14,8 @@ export const LoadingState = ({ message = 'Loading CoopServe details...', subtext
           <div className="w-2.5 h-2.5 bg-teal-600 rounded-full animate-ping" />
         </div>
       </div>
-      <h4 className="text-base font-semibold text-slate-800">{message}</h4>
-      {subtext && <p className="text-xs text-slate-500 mt-1 max-w-sm">{subtext}</p>}
+      <h4 className="text-base font-semibold text-slate-800">{resolvedMessage}</h4>
+      {resolvedSubtext && <p className="text-xs text-slate-500 mt-1 max-w-sm">{resolvedSubtext}</p>}
     </div>
   );
 

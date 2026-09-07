@@ -141,7 +141,10 @@ class ApiService {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.message || `Request failed with status ${response.status}`);
+        const error = new Error(data.message || `Request failed with status ${response.status}`);
+        Object.assign(error, data);
+        error.status = response.status;
+        throw error;
       }
 
       return data;
@@ -151,9 +154,15 @@ class ApiService {
     }
   }
 
-  // Auth endpoints
   login(email, password) {
     return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  adminLogin(email, password) {
+    return this.request('/auth/admin-login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -247,6 +256,11 @@ class ApiService {
     return this.request(`/providers/${id}/reviews`);
   }
 
+  getProviderBookedSlots(id, date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    return this.request(`/providers/${id}/booked-slots${query}`);
+  }
+
   // Bookings
   getBookings() {
     return this.request('/bookings');
@@ -274,6 +288,13 @@ class ApiService {
     return this.request(`/bookings/${id}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ reason })
+    });
+  }
+
+  emergencyReassignBooking(id, providerId) {
+    return this.request(`/bookings/${id}/emergency-reassign`, {
+      method: 'POST',
+      body: JSON.stringify({ providerId })
     });
   }
 
@@ -322,6 +343,21 @@ class ApiService {
   // Cooperative Ecosystem APIs
   getCooperativeOverview() {
     return this.request('/cooperative/overview');
+  }
+
+  getGovernancePoll() {
+    return this.request('/cooperative/governance/active');
+  }
+
+  submitGovernanceVote(pollId, selectedOption) {
+    return this.request(`/cooperative/governance/${pollId}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ selectedOption })
+    });
+  }
+
+  getGovernanceResults(pollId) {
+    return this.request(`/cooperative/governance/${pollId}/results`);
   }
 
   // Admin APIs
@@ -390,6 +426,13 @@ class ApiService {
 
   getRatingForBooking(bookingId) {
     return this.request(`/ratings/bookings/${bookingId}`);
+  }
+
+  verifyBookingLocation(id, data) {
+    return this.request(`/bookings/${id}/verify-location`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
   }
 }
 

@@ -70,8 +70,12 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Amount from the authoritative backend pricing — NEVER from frontend
-    const amountPaise = Math.round((booking.pricing?.customerTotal || booking.price || 400) * 100);
+    // Amount from authoritative backend pricing: exactly 25% customer upfront payment (Requirement 8)
+    const totalBookingAmount = booking.pricing?.customerTotal || booking.price || 400;
+    const upfrontPayable = booking.pricing?.upfrontPayable !== undefined
+      ? booking.pricing.upfrontPayable
+      : Math.round(totalBookingAmount * 0.25);
+    const amountPaise = Math.round(upfrontPayable * 100);
     const currency = 'INR';
 
     const rzp = getRazorpay();
@@ -83,7 +87,10 @@ export const createOrder = async (req, res) => {
       notes: {
         bookingId: booking.id,
         customerId: booking.customerId,
-        serviceTitle: booking.serviceTitle
+        serviceTitle: booking.serviceTitle,
+        totalBookingAmount,
+        upfrontPayable,
+        paymentType: 'UPFRONT_25_PERCENT'
       }
     });
 

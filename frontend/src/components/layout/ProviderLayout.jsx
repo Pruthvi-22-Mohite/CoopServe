@@ -3,7 +3,6 @@ import { Outlet } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { MobileNavigation } from './MobileNavigation';
-import { DemoRoleSwitcher } from '../common/DemoRoleSwitcher';
 
 export const ProviderLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -18,7 +17,6 @@ export const ProviderLayout = () => {
         </main>
       </div>
       <MobileNavigation />
-      <DemoRoleSwitcher />
     </div>
   );
 };

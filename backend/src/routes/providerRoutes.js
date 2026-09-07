@@ -4,7 +4,8 @@ import {
   getProviderById,
   getProviderReviews,
   addProviderReview,
-  smartMatchProviders
+  smartMatchProviders,
+  getBookedSlots
 } from '../controllers/providerController.js';
 
 const router = express.Router();
@@ -12,6 +13,7 @@ const router = express.Router();
 router.get('/match', smartMatchProviders);
 router.post('/match', smartMatchProviders);
 router.get('/', getProviders);
+router.get('/:id/booked-slots', getBookedSlots);
 router.get('/:id', getProviderById);
 router.get('/:id/reviews', getProviderReviews);
 router.post('/:id/reviews', addProviderReview);

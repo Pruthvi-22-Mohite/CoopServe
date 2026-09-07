@@ -2,6 +2,13 @@ import mongoose from 'mongoose';
 import Provider from '../models/Provider.js';
 import Booking from '../models/Booking.js';
 
+const getBookingFinancials = (booking) => {
+  const customerTotal = Math.max(0, Number(booking.pricing?.customerTotal ?? booking.price ?? 0));
+  const platformFee = Math.max(0, Number(booking.pricing?.platformFee ?? booking.pricing?.platformOperations ?? Math.round(customerTotal * 0.10)));
+  const workerEarnings = Math.max(0, Number(booking.pricing?.workerEarnings ?? customerTotal - platformFee));
+  return { customerTotal, platformFee, workerEarnings };
+};
+
 const findProvider = async (userId) => {
   const query = mongoose.isValidObjectId(userId)
     ? { $or: [{ _id: userId }, { id: userId }, { userId }] }
@@ -35,18 +42,20 @@ export const getProviderDashboardStats = async (req, res) => {
 
     const pendingRequests = providerBookings.filter(b => b.status === 'BOOKED');
     const todayJobs = providerBookings.filter(b => b.date === todayStr && b.status !== 'CANCELLED');
-    const completedJobs = providerBookings.filter(b => b.status === 'COMPLETED');
+    const completedJobs = providerBookings.filter(
+      (booking) => booking.status === 'COMPLETED' && !['FAILED', 'REFUNDED'].includes(booking.paymentStatus)
+    );
     const activeJobs = providerBookings.filter(
       b => ['PROVIDER_ACCEPTED', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS'].includes(b.status)
     );
 
     const todayEarnings = todayJobs
       .filter(b => b.status === 'COMPLETED')
-      .reduce((sum, b) => sum + (b.pricing?.workerEarnings || 450), 0);
+      .reduce((sum, b) => sum + getBookingFinancials(b).workerEarnings, 0);
 
     const monthlyEarnings = completedJobs.reduce(
-      (sum, b) => sum + (b.pricing?.workerEarnings || 450),
-      35100 // simulated base month baseline + live completions
+      (sum, b) => sum + getBookingFinancials(b).workerEarnings,
+      0
     );
 
     return res.status(200).json({
@@ -57,12 +66,19 @@ export const getProviderDashboardStats = async (req, res) => {
           id: provider.id,
           name: provider.name,
           skill: provider.skill,
-          rating: provider.rating || 4.88,
+          location: provider.location,
+          state: provider.location?.split(', ').pop() || '',
+          city: provider.location?.split(', ').slice(-2, -1)[0] || '',
+          latitude: provider.latitude,
+          longitude: provider.longitude,
+          rating: provider.rating || 0,
           trustScore: provider.trustScore || 94,
           jobsCompleted: (provider.jobsCompleted || 0) + completedJobs.length,
           isAvailable: provider.isAvailable ?? true,
           availabilityStatus: provider.availabilityStatus || 'Available Today',
           coopMemberId: provider.coopMemberId || 'COOP-MH-2024-001',
+          workerId: provider.workerId || provider.id,
+          vehicleAvailable: provider.vehicleAvailable ?? false,
           avatar: provider.avatar
         },
         metrics: {
@@ -72,7 +88,7 @@ export const getProviderDashboardStats = async (req, res) => {
           completedJobsCount: completedJobs.length,
           todayEarnings,
           monthlyEarnings,
-          rating: provider.rating || 4.88,
+          rating: provider.rating || 0,
           trustScore: provider.trustScore || 94,
           coopParticipationScore: '96%'
         },
@@ -112,6 +128,7 @@ export const getProviderEarnings = async (req, res) => {
     const completedBookings = await Booking.find({
       $and: [
         { status: 'COMPLETED' },
+        { paymentStatus: { $nin: ['FAILED', 'REFUNDED'] } },
         { $or: providerIds.map(pid => ({ providerId: pid })) }
       ]
     });
@@ -119,18 +136,17 @@ export const getProviderEarnings = async (req, res) => {
       $or: providerIds.map(pid => ({ providerId: pid }))
     }).sort({ createdAt: -1 });
 
-    const grossPayments = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.customerPayment || b.pricing?.customerTotal || 500),
-      39000
-    );
-    const workerNetEarnings = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.workerEarnings || 450),
-      35100
-    );
-    const platformOps = completedBookings.reduce(
-      (sum, b) => sum + (b.pricing?.platformOperations || b.pricing?.platformFee || 50),
-      3900
-    );
+    const uniqueCompletedBookings = [...new Map(completedBookings.map((booking) => [booking.id || booking._id.toString(), booking])).values()];
+    const financialRows = uniqueCompletedBookings.map((booking) => ({ booking, ...getBookingFinancials(booking) }));
+    const grossPayments = financialRows.reduce((sum, row) => sum + row.customerTotal, 0);
+    const workerNetEarnings = financialRows.reduce((sum, row) => sum + row.workerEarnings, 0);
+    const platformOps = financialRows.reduce((sum, row) => sum + row.platformFee, 0);
+    const availablePayout = financialRows
+      .filter(({ booking }) => booking.paymentStatus === 'PAID')
+      .reduce((sum, row) => sum + row.workerEarnings, 0);
+    const pendingPayout = financialRows
+      .filter(({ booking }) => booking.paymentStatus !== 'PAID' && !['FAILED', 'REFUNDED'].includes(booking.paymentStatus))
+      .reduce((sum, row) => sum + row.workerEarnings, 0);
 
     return res.status(200).json({
       success: true,
@@ -139,26 +155,27 @@ export const getProviderEarnings = async (req, res) => {
         workerNetEarnings,
         netEarnings: workerNetEarnings,
         platformOps,
-        netPayoutPercentage: '90%',
-        payoutAccount: {
-          bankName: 'HDFC Bank Ltd',
-          accountNumberMasked: '•••• •••• 4102',
-          ifscCode: 'HDFC0001234',
-          nextPayoutDate: 'This Friday (Auto-settlement)'
-        },
-        breakdownList: allBookings.map(b => ({
-          bookingId: b.id,
-          date: b.date,
-          service: b.serviceTitle,
-          basePrice: b.pricing?.basePrice || 400,
-          distanceKm: b.pricing?.distanceKm || 3.2,
-          travelFee: b.pricing?.travelFee !== undefined ? b.pricing.travelFee : 20,
-          extraCharges: b.pricing?.extraCharges || 0,
-          customerPaid: b.pricing?.customerTotal || b.pricing?.customerPayment || 420,
-          netEarnings: b.pricing?.workerEarnings || 378,
-          platformOps: b.pricing?.platformFee || b.pricing?.platformOperations || 42,
-          status: b.status === 'COMPLETED' ? 'PAID_OUT' : 'PENDING_SETTLEMENT'
-        }))
+        netPayoutPercentage: workerNetEarnings > 0 && grossPayments > 0 ? `${Math.round((workerNetEarnings / grossPayments) * 100)}%` : '0%',
+        availablePayout,
+        pendingPayout,
+        payoutAccount: null,
+        breakdownList: allBookings.map((booking) => {
+          const financials = getBookingFinancials(booking);
+          const isEarningBooking = booking.status === 'COMPLETED' && !['FAILED', 'REFUNDED'].includes(booking.paymentStatus);
+          return {
+            bookingId: booking.id,
+            date: booking.date,
+            service: booking.serviceTitle,
+            basePrice: Number(booking.pricing?.basePrice ?? booking.basePrice ?? 0),
+            distanceKm: Number(booking.pricing?.distanceKm ?? booking.distanceKm ?? 0),
+            travelFee: Number(booking.pricing?.travelFee ?? booking.travelFee ?? 0),
+            extraCharges: Number(booking.pricing?.extraCharges ?? booking.extraCharges ?? 0),
+            customerPaid: financials.customerTotal,
+            netEarnings: isEarningBooking ? financials.workerEarnings : 0,
+            platformOps: financials.platformFee,
+            status: booking.status === 'CANCELLED' ? 'CANCELLED' : booking.paymentStatus === 'FAILED' ? 'PAYMENT_FAILED' : booking.status === 'COMPLETED' ? (booking.paymentStatus === 'PAID' ? 'AVAILABLE' : 'PENDING_PAYOUT') : 'NOT_COMPLETED'
+          };
+        })
       }
     });
   } catch (err) {
@@ -180,7 +197,8 @@ export const getProviderAvailability = async (req, res) => {
       availability: {
         isAvailable: provider.isAvailable ?? true,
         availabilityStatus: provider.availabilityStatus || 'Available Today',
-        serviceAreas: provider.serviceAreas || ['Shivajinagar', 'Kothrud', 'Deccan', 'Aundh'],
+        serviceAreas: provider.serviceAreas || [],
+        vehicleAvailable: provider.vehicleAvailable ?? false,
         workingHours: '08:00 AM - 08:00 PM',
         instantDispatchRadiusKm: 5.0
       }
@@ -193,7 +211,7 @@ export const getProviderAvailability = async (req, res) => {
 export const updateProviderAvailability = async (req, res) => {
   try {
     const userId = req.user?.id || 'usr_provider_demo';
-    const { isAvailable, availabilityStatus, serviceAreas } = req.body;
+    const { isAvailable, availabilityStatus, serviceAreas, vehicleAvailable } = req.body;
 
     const query = mongoose.isValidObjectId(userId)
       ? { $or: [{ _id: userId }, { id: userId }, { userId }] }
@@ -211,6 +229,7 @@ export const updateProviderAvailability = async (req, res) => {
     if (isAvailable !== undefined) provider.isAvailable = Boolean(isAvailable);
     if (availabilityStatus) provider.availabilityStatus = availabilityStatus;
     if (serviceAreas) provider.serviceAreas = serviceAreas;
+    if (vehicleAvailable !== undefined) provider.vehicleAvailable = Boolean(vehicleAvailable);
     await provider.save();
 
     return res.status(200).json({
@@ -219,7 +238,8 @@ export const updateProviderAvailability = async (req, res) => {
       availability: {
         isAvailable: provider.isAvailable,
         availabilityStatus: provider.availabilityStatus,
-        serviceAreas: provider.serviceAreas
+        serviceAreas: provider.serviceAreas,
+        vehicleAvailable: provider.vehicleAvailable ?? false
       }
     });
   } catch (err) {

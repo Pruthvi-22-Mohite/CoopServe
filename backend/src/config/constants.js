@@ -13,9 +13,9 @@ export const DEMO_ACCOUNTS = [
     phone: '+91 98765 43210',
     role: ROLES.CUSTOMER,
     isDemoAccount: true,
-    location: 'Kothrud, Pune',
+    location: '',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-    rewardsPoints: 450,
+    rewardsPoints: 0,
     memberSince: '2025-11-10'
   },
   {
