@@ -21,21 +21,9 @@ export const ProviderAvailability = () => {
   const [isAvailable, setIsAvailable] = useState(true);
   const [availabilityStatus, setAvailabilityStatus] = useState('Available Today');
   const [selectedAreas, setSelectedAreas] = useState([]);
+  const [coverageArea, setCoverageArea] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-
-  const puneLocalities = [
-    'Shivajinagar',
-    'Kothrud',
-    'Deccan Gymkhana',
-    'Aundh',
-    'Baner',
-    'Hadapsar',
-    'Karve Nagar',
-    'Viman Nagar',
-    'Kalyani Nagar',
-    'Warje'
-  ];
 
   useEffect(() => {
     const fetchAvail = async () => {
@@ -45,7 +33,7 @@ export const ProviderAvailability = () => {
         if (res.success && res.availability) {
           setIsAvailable(res.availability.isAvailable ?? true);
           setAvailabilityStatus(res.availability.availabilityStatus || 'Available Today');
-          setSelectedAreas(res.availability.serviceAreas || ['Shivajinagar', 'Kothrud', 'Deccan']);
+          setSelectedAreas(res.availability.serviceAreas || []);
         }
       } catch (err) {
         console.error('Error fetching availability:', err);
@@ -62,6 +50,14 @@ export const ProviderAvailability = () => {
     } else {
       setSelectedAreas([...selectedAreas, area]);
     }
+  };
+
+  const addCoverageArea = () => {
+    const area = coverageArea.trim();
+    if (area && !selectedAreas.includes(area)) {
+      setSelectedAreas([...selectedAreas, area]);
+    }
+    setCoverageArea('');
   };
 
   const handleSave = async () => {
@@ -146,18 +142,29 @@ export const ProviderAvailability = () => {
           </Card>
         </div>
 
-        {/* Right Column (7 cols): Pune Localities Coverage Selection */}
+        {/* Right Column (7 cols): Service Coverage Selection */}
         <div className="lg:col-span-7 space-y-4">
           <Card className="p-6 space-y-4">
             <div>
-              <h3 className="font-bold text-base text-slate-900">Pune Service Localities</h3>
+              <h3 className="font-bold text-base text-slate-900">Service Coverage Areas</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Select the areas within Pune where you want to accept jobs ({selectedAreas.length} selected).
+                Add the areas where you want to accept jobs ({selectedAreas.length} selected).
               </p>
             </div>
 
+            <div className="flex gap-2">
+              <input
+                value={coverageArea}
+                onChange={(e) => setCoverageArea(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoverageArea(); } }}
+                placeholder="Enter a service area"
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addCoverageArea}>Add Area</Button>
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {puneLocalities.map((loc) => {
+              {selectedAreas.map((loc) => {
                 const isChecked = selectedAreas.includes(loc);
                 return (
                   <button

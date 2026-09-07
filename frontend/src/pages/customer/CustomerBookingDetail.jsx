@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -33,6 +34,7 @@ export const CustomerBookingDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t } = useLanguage();
 
   const [booking, setBooking] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,7 +44,7 @@ export const CustomerBookingDetail = () => {
   const [isCancelling, setIsCancelling] = useState(false);
 
   // Rating & Payment states
-  const [selectedRating, setSelectedRating] = useState(5);
+  const [selectedRating, setSelectedRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
@@ -186,15 +188,15 @@ export const CustomerBookingDetail = () => {
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading order details..." />;
+    return <LoadingState message={t('common_loading')} />;
   }
 
   if (!booking) {
     return (
       <div className="text-center py-16">
-        <h3 className="text-lg font-bold text-slate-800">Booking record not found</h3>
+        <h3 className="text-lg font-bold text-slate-800">{t('booking_slot_unavailable')}</h3>
         <Button variant="primary" className="mt-4" onClick={() => navigate('/customer/bookings')}>
-          Back to Bookings
+          {t('booking_view_bookings')}
         </Button>
       </div>
     );
@@ -203,6 +205,22 @@ export const CustomerBookingDetail = () => {
   const isRejected = booking.status === 'REJECTED' || booking.status === 'DECLINED';
   const isCancelled = booking.status === 'CANCELLED';
   const isCompleted = booking.status === 'COMPLETED';
+  const bookingTotal = Number(booking.pricing?.customerTotal ?? booking.price ?? 0);
+  const upfrontPaid = Number(
+    booking.pricing?.upfrontPayable
+      ?? booking.upfrontPayable
+      ?? Math.round(bookingTotal * 0.25)
+  );
+  const cancellationCharge = Number.isFinite(Number(booking.cancellationDeduction)) && Number(booking.cancellationDeduction) > 0
+    ? Number(booking.cancellationDeduction)
+    : Number.isFinite(Number(booking.pricing?.cancellationDeduction)) && Number(booking.pricing.cancellationDeduction) > 0
+      ? Number(booking.pricing.cancellationDeduction)
+      : Math.round(upfrontPaid * 0.10);
+  const refundAmount = Number.isFinite(Number(booking.refundAmount)) && Number(booking.refundAmount) > 0
+    ? Number(booking.refundAmount)
+    : Number.isFinite(Number(booking.pricing?.refundAmount)) && Number(booking.pricing.refundAmount) > 0
+      ? Number(booking.pricing.refundAmount)
+      : Math.max(0, upfrontPaid - cancellationCharge);
 
   const steps = [
     { key: 'BOOKED', label: 'Order Confirmed', time: 'Completed' },
@@ -230,13 +248,13 @@ export const CustomerBookingDetail = () => {
 
   const getHeaderBadge = () => {
     if (isCompleted) return <Badge variant="success" size="sm">✓ Completed</Badge>;
-    if (isCancelled) return <Badge variant="danger" size="sm">Cancelled by Customer</Badge>;
-    if (isRejected) return <Badge variant="danger" size="sm">Declined by Provider</Badge>;
-    if (booking.status === 'IN_PROGRESS') return <Badge variant="warning" size="sm">In Progress</Badge>;
-    if (booking.status === 'ARRIVED') return <Badge variant="info" size="sm">Arrived at Site</Badge>;
-    if (booking.status === 'ON_THE_WAY') return <Badge variant="info" size="sm">On The Way</Badge>;
-    if (booking.status === 'PROVIDER_ACCEPTED' || booking.status === 'ACCEPTED') return <Badge variant="success" size="sm">Pro Accepted</Badge>;
-    return <Badge variant="protected" size="sm">Order Confirmed</Badge>;
+    if (isCancelled) return <Badge variant="danger" size="sm">{t('status_cancelled_customer')}</Badge>;
+    if (isRejected) return <Badge variant="danger" size="sm">{t('status_declined_provider')}</Badge>;
+    if (booking.status === 'IN_PROGRESS') return <Badge variant="warning" size="sm">{t('status_in_progress')}</Badge>;
+    if (booking.status === 'ARRIVED') return <Badge variant="info" size="sm">{t('status_arrived')}</Badge>;
+    if (booking.status === 'ON_THE_WAY') return <Badge variant="info" size="sm">{t('status_on_the_way')}</Badge>;
+    if (booking.status === 'PROVIDER_ACCEPTED' || booking.status === 'ACCEPTED') return <Badge variant="success" size="sm">{t('status_provider_accepted')}</Badge>;
+    return <Badge variant="protected" size="sm">{t('status_order_confirmed')}</Badge>;
   };
 
   return (
@@ -259,14 +277,14 @@ export const CustomerBookingDetail = () => {
 
       {/* Real-Time Visual Status Timeline / Rejection Resolution Banner */}
       <Card className="p-6 bg-white border border-slate-200/90 shadow-soft">
-        <h3 className="text-sm font-bold text-slate-900 mb-4">Service Status & Progress</h3>
+        <h3 className="text-sm font-bold text-slate-900 mb-4">{t('booking_status_progress')}</h3>
 
         {isCancelled ? (
           <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-3 text-rose-800 text-xs">
             <XCircle className="w-5 h-5 shrink-0 text-rose-600" />
             <div>
-              <p className="font-bold">This booking was cancelled by customer.</p>
-              <p className="text-rose-600 mt-0.5">Reason: {booking.cancellationReason || 'Schedule change'}</p>
+              <p className="font-bold">{t('booking_cancelled_customer')}</p>
+              <p className="text-rose-600 mt-0.5">{t('cancellation_reason')}: {booking.cancellationReason || t('cancellation_schedule_change')}</p>
             </div>
           </div>
         ) : isRejected ? (
@@ -278,8 +296,8 @@ export const CustomerBookingDetail = () => {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="text-base font-extrabold text-amber-950">Job Request Declined by Provider</h4>
-                    <Badge variant="danger" size="sm">Provider Unavailable</Badge>
+                    <h4 className="text-base font-extrabold text-amber-950">{t('booking_declined_title')}</h4>
+                    <Badge variant="danger" size="sm">{t('provider_unavailable')}</Badge>
                   </div>
                   <p className="text-xs text-amber-900 mt-1 leading-relaxed">
                     <strong>{booking.providerName}</strong> was unable to accept this request due to a schedule conflict or duty status.
@@ -292,10 +310,10 @@ export const CustomerBookingDetail = () => {
             <div className="p-3.5 bg-white/95 rounded-xl border border-amber-200 text-xs space-y-1.5 shadow-xs">
               <div className="flex items-center gap-2 font-bold text-emerald-800">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>CoopServe 100% Protection Guarantee Active</span>
+                <span>{t('booking_protection_active')}</span>
               </div>
               <p className="text-slate-600 leading-relaxed">
-                Your payment of <strong>₹{booking.price || booking.pricing?.customerPayment || 500}</strong> is 100% protected. Zero cancellation charges apply. You can instantly match with another verified cooperative provider or request an auto-refund.
+                Your payment of <strong>₹{booking.price ?? booking.pricing?.customerPayment ?? 0}</strong> is protected. A cancellation charge applies only when you cancel an eligible booking.
               </p>
             </div>
 
@@ -360,8 +378,8 @@ export const CustomerBookingDetail = () => {
           {/* Assigned Technician Card */}
           <Card className="p-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="text-sm font-bold text-slate-900">Assigned Cooperative Professional</h3>
-              <Badge variant="coop" size="sm">Trust Score: {booking.providerTrustScore || 94}/100</Badge>
+              <h3 className="text-sm font-bold text-slate-900">{t('booking_assigned_professional')}</h3>
+              <Badge variant="coop" size="sm">Trust Score: {booking.providerTrustScore ?? 0}/100</Badge>
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -419,17 +437,17 @@ export const CustomerBookingDetail = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
-                <span className="text-slate-400 font-medium block uppercase text-[10px]">Service Title</span>
+                <span className="text-slate-400 font-medium block uppercase text-[10px]">{t('payment_service')}</span>
                 <p className="font-bold text-slate-900 text-sm mt-0.5">{booking.serviceTitle}</p>
               </div>
 
               <div>
-                <span className="text-slate-400 font-medium block uppercase text-[10px]">Scheduled Slot</span>
+                <span className="text-slate-400 font-medium block uppercase text-[10px]">{t('booking_scheduled_slot')}</span>
                 <p className="font-bold text-slate-900 text-sm mt-0.5">{booking.date} at {booking.time}</p>
               </div>
 
               <div className="sm:col-span-2">
-                <span className="text-slate-400 font-medium block uppercase text-[10px]">Service Address</span>
+                <span className="text-slate-400 font-medium block uppercase text-[10px]">{t('booking_service_location')}</span>
                 <p className="font-semibold text-slate-800 text-xs mt-0.5 flex items-start gap-1.5">
                   <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <span>{booking.address}</span>
@@ -438,7 +456,7 @@ export const CustomerBookingDetail = () => {
 
               {booking.notes && (
                 <div className="sm:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-slate-400 font-bold uppercase text-[10px]">Customer Notes</span>
+                  <span className="text-slate-400 font-bold uppercase text-[10px]">{t('booking_customer_notes')}</span>
                   <p className="text-xs text-slate-700 mt-0.5">{booking.notes}</p>
                 </div>
               )}
@@ -451,7 +469,7 @@ export const CustomerBookingDetail = () => {
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                  <h3 className="text-sm font-bold text-slate-900">Verified Service Review & Rating</h3>
+                  <h3 className="text-sm font-bold text-slate-900">{t('booking_review_title')}</h3>
                 </div>
                 <Badge variant={booking.ratingStatus === 'RATED' || booking.rating ? 'success' : 'warning'} size="sm">
                   {booking.ratingStatus === 'RATED' || booking.rating ? '✓ Rated' : 'Rating Pending'}
@@ -464,11 +482,11 @@ export const CustomerBookingDetail = () => {
                     {[1, 2, 3, 4, 5].map((star) => (
                       <Star
                         key={star}
-                        className={`w-5 h-5 ${star <= (booking.rating || 5) ? 'text-amber-500 fill-amber-500' : 'text-slate-300'}`}
+                        className={`w-5 h-5 ${star <= (booking.rating || 0) ? 'text-amber-500 fill-amber-500' : 'text-slate-300'}`}
                       />
                     ))}
                     <span className="text-sm font-bold text-slate-800 ml-2">
-                      {booking.rating ? `${Number(booking.rating).toFixed(1)} / 5.0` : '5.0 / 5.0'}
+                      {booking.rating ? `${Number(booking.rating).toFixed(1)} / 5.0` : '0.0 / 5.0'}
                     </span>
                   </div>
                   {booking.review && (
@@ -518,7 +536,7 @@ export const CustomerBookingDetail = () => {
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-xs font-semibold text-slate-700">Written Feedback (Optional)</label>
+                      <label className="text-xs font-semibold text-slate-700">{t('booking_feedback_optional')}</label>
                       <span className="text-[10px] text-slate-400">{reviewComment.length}/500</span>
                     </div>
                     <textarea
@@ -553,7 +571,7 @@ export const CustomerBookingDetail = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Protected Receipt</span>
+                <span>{t('payment_receipt')}</span>
               </div>
               {booking.paymentStatus === 'PAID' ? (
                 <Badge variant="success" size="sm">PAID</Badge>
@@ -568,11 +586,11 @@ export const CustomerBookingDetail = () => {
             <div className="space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Base Service Price</span>
-                <span className="font-semibold text-slate-900">₹{booking.pricing?.basePrice || 400}</span>
+                <span className="font-semibold text-slate-900">₹{booking.pricing?.basePrice ?? 0}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Distance Travel Fee ({booking.pricing?.distanceKm || 3.2} km)</span>
-                <span className="font-semibold text-slate-900">₹{booking.pricing?.travelFee !== undefined ? booking.pricing.travelFee : 20}</span>
+                <span>Distance Travel Fee ({booking.pricing?.distanceKm || 0} km)</span>
+                <span className="font-semibold text-slate-900">₹{booking.pricing?.travelFee !== undefined ? booking.pricing.travelFee : 0}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Extra Charges</span>
@@ -581,17 +599,17 @@ export const CustomerBookingDetail = () => {
 
               <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900">
                 <span>Total Amount Paid</span>
-                <span className="text-emerald-700">₹{booking.pricing?.customerTotal || booking.pricing?.customerPayment || 420}</span>
+                <span className="text-emerald-700">₹{booking.pricing?.customerTotal ?? booking.pricing?.customerPayment ?? 0}</span>
               </div>
 
               <div className="pt-2 border-t border-slate-100 text-[11px] space-y-1 text-slate-500">
                 <div className="flex justify-between">
                   <span>Worker Earnings (90%)</span>
-                  <span className="font-bold text-emerald-800">₹{booking.pricing?.workerEarnings || 378}</span>
+                  <span className="font-bold text-emerald-800">₹{booking.pricing?.workerEarnings ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Platform Operations (10%)</span>
-                  <span className="font-medium text-slate-700">₹{booking.pricing?.platformFee || booking.pricing?.platformOperations || 42}</span>
+                  <span className="font-medium text-slate-700">₹{booking.pricing?.platformFee ?? booking.pricing?.platformOperations ?? 0}</span>
                 </div>
               </div>
             </div>
@@ -618,7 +636,7 @@ export const CustomerBookingDetail = () => {
                   onClick={handlePayBooking}
                   leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
                 >
-                  Pay ₹{booking.pricing?.customerTotal || 420} via Razorpay
+                  Pay ₹{booking.pricing?.upfrontPayable ?? 0} via Razorpay
                 </Button>
               </div>
             )}
@@ -653,23 +671,41 @@ export const CustomerBookingDetail = () => {
       <Modal
         isOpen={showCancelModal}
         onClose={() => setShowCancelModal(false)}
-        title="Cancel Protected Booking?"
-        description="Please review what happens when cancelling on CoopServe."
+        title={t('cancellation_title')}
+        description={t('cancellation_message')}
       >
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
             <div className="flex items-center gap-2 font-bold">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span>Notice of Protection Removal</span>
+              <span>{t('cancellation_charge_notice')}</span>
             </div>
             <p className="text-amber-800 leading-relaxed">
-              Your provider <strong>{booking.providerName}</strong> has already been scheduled. Cancelling this booking will remove your CoopServe protection, digital service record, and 30-day warranty guarantee.
+              {t('cancellation_message')}
             </p>
+            <div className="bg-white/80 rounded-xl p-3 border border-amber-200 space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span>{t('cancellation_total')}</span>
+                <span className="font-bold">₹{bookingTotal}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{t('cancellation_paid')}</span>
+                <span className="font-bold">₹{upfrontPaid}</span>
+              </div>
+              <div className="flex justify-between text-rose-700">
+                <span>{t('cancellation_charge')}</span>
+                <span className="font-bold">- ₹{cancellationCharge}</span>
+              </div>
+              <div className="flex justify-between text-emerald-700 font-bold border-t border-amber-200 pt-1.5">
+                <span>{t('cancellation_refund')}</span>
+                <span>₹{refundAmount}</span>
+              </div>
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Reason for Cancellation
+              {t('cancellation_reason')}
             </label>
             <select
               value={cancelReason}
@@ -689,7 +725,7 @@ export const CustomerBookingDetail = () => {
               size="sm"
               onClick={() => setShowCancelModal(false)}
             >
-              Keep Protected Booking
+              {t('cancellation_keep')}
             </Button>
             <Button
               variant="danger"
@@ -697,7 +733,7 @@ export const CustomerBookingDetail = () => {
               isLoading={isCancelling}
               onClick={handleCancelBooking}
             >
-              Confirm Cancellation
+              {t('cancellation_confirm')}
             </Button>
           </div>
         </div>

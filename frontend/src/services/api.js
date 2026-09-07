@@ -141,7 +141,10 @@ class ApiService {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.message || `Request failed with status ${response.status}`);
+        const error = new Error(data.message || `Request failed with status ${response.status}`);
+        Object.assign(error, data);
+        error.status = response.status;
+        throw error;
       }
 
       return data;
@@ -151,9 +154,15 @@ class ApiService {
     }
   }
 
-  // Auth endpoints
   login(email, password) {
     return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  adminLogin(email, password) {
+    return this.request('/auth/admin-login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -245,6 +254,11 @@ class ApiService {
 
   getProviderReviews(id) {
     return this.request(`/providers/${id}/reviews`);
+  }
+
+  getProviderBookedSlots(id, date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    return this.request(`/providers/${id}/booked-slots${query}`);
   }
 
   // Bookings

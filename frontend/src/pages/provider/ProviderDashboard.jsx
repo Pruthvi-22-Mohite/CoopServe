@@ -89,21 +89,14 @@ export const ProviderDashboard = () => {
   );
   const completedJobs = bookings.filter((b) => b.status === 'COMPLETED');
 
-  const providerInfo = stats?.provider || {
-    name: 'Rahul Sharma',
-    skill: 'Certified Electrician',
-    trustScore: 94,
-    rating: 4.88,
-    coopMemberId: 'COOP-MH-2024-001'
-  };
+  const providerInfo = stats?.provider || {};
 
   const metrics = stats?.metrics || {
-    todayJobsCount: 2,
-    todayEarnings: 880,
-    monthlyEarnings: 34200,
-    totalCoopContribution: 2340,
-    rating: 4.88,
-    trustScore: 94
+    todayJobsCount: 0,
+    todayEarnings: 0,
+    monthlyEarnings: 0,
+    rating: 0,
+    trustScore: 0
   };
 
   return (
@@ -122,10 +115,10 @@ export const ProviderDashboard = () => {
               <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">
                 COOP-MEMBER PORTAL
               </span>
-              <Badge variant="success" size="sm">Active On Duty</Badge>
+              <Badge variant={providerInfo.isAvailable ? 'success' : 'warning'} size="sm">{providerInfo.isAvailable ? 'Active On Duty' : 'Off Duty'}</Badge>
             </div>
             <h2 className="text-2xl font-black text-white mt-0.5">{providerInfo.name}</h2>
-            <p className="text-xs text-emerald-200">{providerInfo.skill} • ID: {providerInfo.coopMemberId}</p>
+            <p className="text-xs text-emerald-200">{providerInfo.skill} • ID: {providerInfo.workerId || providerInfo.id || '—'}</p>
           </div>
         </div>
 
@@ -153,7 +146,7 @@ export const ProviderDashboard = () => {
         />
         <StatCard
           title="Today's Net Earnings"
-          value={`₹${completedJobs.length > 0 ? completedJobs.length * 450 : 900}`}
+          value={`₹${metrics.todayEarnings.toLocaleString()}`}
           icon={IndianRupee}
           trend={{ direction: 'up', text: '90% direct worker split' }}
           variant="success"
@@ -198,7 +191,7 @@ export const ProviderDashboard = () => {
                     <span className="text-xs font-bold text-slate-400">ID: {req.id}</span>
                   </div>
                   <span className="text-sm font-black text-emerald-800">
-                    Net: ₹{req.pricing?.workerEarnings || 378}
+                    Net: ₹{req.pricing?.workerEarnings ?? 0}
                   </span>
                 </div>
 
@@ -233,19 +226,19 @@ export const ProviderDashboard = () => {
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Customer Payment:</span>
-                    <span className="font-semibold text-slate-900">₹{req.pricing?.customerTotal || req.pricing?.customerPayment || req.price || 420}</span>
+                    <span className="font-semibold text-slate-900">₹{req.pricing?.customerTotal ?? req.price ?? 0}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Distance & Travel Fee ({req.pricing?.distanceKm || 3.2} km):</span>
-                    <span className="font-semibold text-teal-800">+₹{req.pricing?.travelFee !== undefined ? req.pricing.travelFee : 20}</span>
+                    <span>Distance & Travel Fee ({req.pricing?.distanceKm ?? 0} km):</span>
+                    <span className="font-semibold text-teal-800">+₹{req.pricing?.travelFee ?? 0}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Platform Operations Fee (10%):</span>
-                    <span className="font-semibold text-slate-700">-₹{req.pricing?.platformFee || req.pricing?.platformOperations || 42}</span>
+                    <span className="font-semibold text-slate-700">-₹{req.pricing?.platformFee ?? req.pricing?.platformOperations ?? 0}</span>
                   </div>
                   <div className="pt-1.5 border-t border-slate-200 flex justify-between font-black text-xs">
                     <span className="text-emerald-900">Your Expected Net Earnings:</span>
-                    <span className="text-emerald-700 text-sm">₹{req.pricing?.workerEarnings || 378}</span>
+                    <span className="text-emerald-700 text-sm">₹{req.pricing?.workerEarnings ?? 0}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 italic pt-0.5">Clear pricing before booking. Clear earnings before accepting.</p>
                 </div>
@@ -268,7 +261,7 @@ export const ProviderDashboard = () => {
                     onClick={() => handleUpdateStatus(req.id, 'PROVIDER_ACCEPTED')}
                     rightIcon={<CheckCircle2 className="w-4 h-4" />}
                   >
-                    Accept Job (₹{req.pricing?.workerEarnings || 378})
+                    Accept Job (₹{req.pricing?.workerEarnings ?? 0})
                   </Button>
                 </div>
               </Card>
@@ -303,7 +296,7 @@ export const ProviderDashboard = () => {
                         {job.status.replace('_', ' ')}
                       </Badge>
                       <Badge variant="coop" size="sm">
-                        90% Worker Net: ₹{job.pricing?.workerEarnings || 378}
+                        90% Worker Net: ₹{job.pricing?.workerEarnings ?? 0}
                       </Badge>
                     </div>
 
@@ -377,7 +370,7 @@ export const ProviderDashboard = () => {
                         onClick={() => handleUpdateStatus(job.id, 'COMPLETED')}
                         leftIcon={<CheckCircle2 className="w-4 h-4" />}
                       >
-                        Complete Service & Get Paid (₹{job.pricing?.workerEarnings || 378})
+                        Complete Service & Get Paid (₹{job.pricing?.workerEarnings ?? 0})
                       </Button>
                     )}
                   </div>
@@ -416,7 +409,7 @@ export const ProviderDashboard = () => {
               </div>
               <div className="text-right">
                 <span className="font-black text-emerald-800 text-sm">
-                  +₹{cJob.pricing?.workerEarnings || 378}
+                  +₹{cJob.pricing?.workerEarnings ?? 0}
                 </span>
                 <span className="text-[10px] text-slate-400 block">90% Net Payout</span>
               </div>

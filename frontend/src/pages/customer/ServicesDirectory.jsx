@@ -83,8 +83,8 @@ export const ServicesDirectory = () => {
     <div className="space-y-6">
       <PageHeader
         title={t('nav_services')}
-        description="Browse certified household and community services with transparent base pricing, distance travel compensation, 30-day rework warranty, and 90% direct worker payout."
-        breadcrumbs={['Home', 'Services']}
+        description={t('services_directory_description')}
+        breadcrumbs={[t('nav_home'), t('nav_services')]}
       />
 
       {/* Category Pills & Search Row */}
@@ -130,7 +130,7 @@ export const ServicesDirectory = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search service title..."
+            placeholder={t('services_search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
@@ -140,7 +140,7 @@ export const ServicesDirectory = () => {
 
       {/* Services Grid */}
       {isLoading ? (
-        <LoadingState message="Loading cooperative service catalog..." />
+        <LoadingState message={t('services_loading')} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredServices.map((srv) => (
@@ -156,7 +156,7 @@ export const ServicesDirectory = () => {
                   <div className="absolute top-3 left-3">
                     <Badge variant="protected" size="sm">
                       <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-                      Co-op Protected
+                      {t('common_coop_protected')}
                     </Badge>
                   </div>
                   <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
@@ -183,7 +183,7 @@ export const ServicesDirectory = () => {
                   {/* Included Checklist */}
                   {srv.included && (
                     <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">What's Included:</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('services_included')}</p>
                       {srv.included.slice(0, 3).map((inc, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -198,7 +198,7 @@ export const ServicesDirectory = () => {
               {/* Card Footer with Smart Match CTA */}
               <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-medium">Starting from (Base)</span>
+                  <span className="text-[10px] text-slate-400 block font-medium">{t('services_starting_base')}</span>
                   <span className="text-lg font-black text-slate-900">₹{srv.basePrice}</span>
                   <span className="text-[10px] text-slate-500 block font-medium">⏱️ {srv.duration}</span>
                 </div>
@@ -210,7 +210,7 @@ export const ServicesDirectory = () => {
                     onClick={() => handleTriggerSmartMatch(srv)}
                     leftIcon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
                   >
-                    Instant Match
+                    {t('services_instant_match')}
                   </Button>
                   <Button
                     variant="danger"
@@ -218,7 +218,7 @@ export const ServicesDirectory = () => {
                     onClick={() => handleTriggerEmergencyBooking(srv)}
                     leftIcon={<Zap className="w-3.5 h-3.5" />}
                   >
-                    Emergency Booking
+                    {t('services_emergency_booking')}
                   </Button>
                   <Button
                     variant="outline"
@@ -226,7 +226,7 @@ export const ServicesDirectory = () => {
                     onClick={() => navigate(`/customer/providers?category=${srv.categoryId}`)}
                     rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                   >
-                    Browse
+                    {t('services_browse')}
                   </Button>
                 </div>
               </div>

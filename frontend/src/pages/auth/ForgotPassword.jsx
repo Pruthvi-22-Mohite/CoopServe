@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Card } from '../../components/common/Card';
@@ -8,6 +9,7 @@ import { Badge } from '../../components/common/Badge';
 import { ShieldCheck, Mail, ArrowLeft, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export const ForgotPassword = () => {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -16,12 +18,12 @@ export const ForgotPassword = () => {
 
   const validateEmail = (val) => {
     if (!val.trim()) {
-      setEmailError('Email address is required.');
+      setEmailError(t('validation_email_required'));
       return false;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(val.trim())) {
-      setEmailError('Please enter a valid email address (e.g. name@domain.com).');
+      setEmailError(t('validation_email_invalid'));
       return false;
     }
     setEmailError('');
@@ -46,10 +48,10 @@ export const ForgotPassword = () => {
           resetLink: res.resetLink
         });
       } else {
-        setError(res.message || 'Unable to request password reset.');
+        setError(res.message || t('common_server_error'));
       }
     } catch (err) {
-      setError(err.message || 'Error communicating with server.');
+      setError(err.message || t('common_server_error'));
     } finally {
       setIsLoading(false);
     }
@@ -67,13 +69,13 @@ export const ForgotPassword = () => {
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
                 Coop<span className="text-brand-emerald">Serve</span>
               </h1>
-              <p className="text-xs text-slate-500 font-medium">Account Recovery</p>
+              <p className="text-xs text-slate-500 font-medium">{t('auth_account_recovery')}</p>
             </div>
           </div>
 
           <div className="mb-6">
-            <Badge variant="coop" size="sm" className="mb-2">Secure Recovery</Badge>
-            <h2 className="text-xl font-bold text-slate-900">Reset your password</h2>
+            <Badge variant="coop" size="sm" className="mb-2">{t('auth_account_recovery')}</Badge>
+            <h2 className="text-xl font-bold text-slate-900">{t('auth_reset_password')}</h2>
             <p className="text-xs text-slate-500 mt-1">
               Enter the email address associated with your CoopServe account and we'll generate a reset link.
             </p>
@@ -121,7 +123,7 @@ export const ForgotPassword = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Input
-                  label="Email Address"
+                  label={t('auth_email')}
                   type="email"
                   placeholder="e.g. priya@example.com"
                   value={email}
@@ -145,7 +147,7 @@ export const ForgotPassword = () => {
                 isLoading={isLoading}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Send Reset Link
+                {t('auth_send_reset_link')}
               </Button>
 
               <div className="pt-2 text-center">
@@ -153,7 +155,7 @@ export const ForgotPassword = () => {
                   to="/login"
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
+                  <ArrowLeft className="w-3.5 h-3.5" /> {t('auth_back_sign_in')}
                 </Link>
               </div>
             </form>

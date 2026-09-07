@@ -1,13 +1,45 @@
 import mongoose from 'mongoose';
 import Provider from '../models/Provider.js';
 import Review from '../models/Review.js';
-import { matchProviders } from '../services/matchingEngine.js';
+import Booking from '../models/Booking.js';
+import { matchProviders, isProviderEligible } from '../services/matchingEngine.js';
+import { geocodePlace, haversineDistanceMeters } from '../utils/geolocation.js';
+
+export const enrichProviderDynamicRating = async (provider) => {
+  if (!provider) return provider;
+  const provId = provider.id || (provider._id ? provider._id.toString() : '');
+  
+  // Find all verified reviews for this provider
+  const reviews = await Review.find({
+    $or: [
+      { providerId: provId },
+      ...(provider._id ? [{ providerId: provider._id.toString() }] : [])
+    ],
+    isSuspicious: false
+  }).lean();
+
+  const allReviews = (reviews && reviews.length > 0) ? reviews : (provider.reviews || []);
+  const validReviews = allReviews.filter(r => typeof r.rating === 'number' && r.rating > 0);
+
+  if (validReviews.length > 0) {
+    const avg = validReviews.reduce((sum, r) => sum + r.rating, 0) / validReviews.length;
+    provider.rating = parseFloat(avg.toFixed(1));
+    provider.reviewsCount = validReviews.length;
+  } else {
+    provider.rating = 0;
+    provider.reviewsCount = 0;
+  }
+  return provider;
+};
 
 export const getProviders = async (req, res) => {
   try {
-    const { category, search, minRating, maxPrice, availableToday, sortBy } = req.query;
+    const { category, search, minRating, maxPrice, availableToday, sortBy, latitude, longitude, location } = req.query;
 
     const filter = {};
+    filter.status = 'Active';
+    filter.isAvailable = true;
+    filter.availabilityStatus = { $ne: 'Off Duty' };
 
     if (category && category !== 'all') {
       filter.categories = category;
@@ -76,6 +108,29 @@ export const getProviders = async (req, res) => {
 
     let providers = await query.lean().exec();
 
+    if (location) {
+      providers = providers.filter((provider) => isProviderEligible(provider, location));
+    }
+
+    // Dynamically calculate average rating from actual reviews (Requirement 6)
+    providers = await Promise.all(providers.map(async (p) => {
+      const coordinates = Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
+        ? null
+        : await geocodePlace(p.location);
+      if (coordinates) {
+        p.latitude = coordinates.latitude;
+        p.longitude = coordinates.longitude;
+      }
+      if (Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))) {
+        p.distanceKm = haversineDistanceMeters(Number(latitude), Number(longitude), Number(p.latitude), Number(p.longitude)) / 1000;
+      }
+      return enrichProviderDynamicRating(p);
+    }));
+
+    if (sortBy === 'distance') {
+      providers.sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
+    }
+
     if (!sortBy || sortBy === 'relevance' || sortBy === 'ai') {
       providers = [...providers].sort(
         (a, b) =>
@@ -101,13 +156,23 @@ export const smartMatchProviders = async (req, res) => {
       categoryId: req.body?.categoryId || req.body?.category || req.query?.category || req.query?.categoryId || 'all',
       serviceId: req.body?.serviceId || req.query?.serviceId,
       serviceTitle: req.body?.serviceTitle || req.body?.service || req.query?.serviceTitle,
-      customerLocation: req.body?.customerLocation || req.query?.location || 'Kothrud, Pune',
+      customerLocation: req.body?.customerLocation || req.query?.location || '',
       urgency: req.body?.urgency || req.query?.urgency || 'today',
       maxPrice: req.body?.maxPrice || req.query?.maxPrice,
       minRating: req.body?.minRating || req.query?.minRating
     };
 
-    let allProviders = await Provider.find({}).lean();
+    let allProviders = await Provider.find({ status: 'Active', isAvailable: true, availabilityStatus: { $ne: 'Off Duty' } }).lean();
+    allProviders = await Promise.all(allProviders.map(async (p) => {
+      const coordinates = Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
+        ? null
+        : await geocodePlace(p.location);
+      if (coordinates) {
+        p.latitude = coordinates.latitude;
+        p.longitude = coordinates.longitude;
+      }
+      return enrichProviderDynamicRating(p);
+    }));
 
     if (radiusKm !== null && radiusKm !== undefined && radiusKm !== '') {
       const parsedRadius = Number(radiusKm);
@@ -135,14 +200,77 @@ export const getProviderById = async (req, res) => {
       ? { $or: [{ _id: id }, { id }] }
       : { id };
 
-    const provider = await Provider.findOne(query);
+    let provider = await Provider.findOne(query).lean();
 
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
+
+    // Dynamic rating calculation from actual reviews (Requirement 6)
+    provider = await enrichProviderDynamicRating(provider);
+    if (!Number.isFinite(Number(provider.latitude)) || !Number.isFinite(Number(provider.longitude))) {
+      const coordinates = await geocodePlace(provider.location);
+      if (coordinates) {
+        provider.latitude = coordinates.latitude;
+        provider.longitude = coordinates.longitude;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       provider
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Booked Slot Removal Controller (Requirement 10)
+export const getBookedSlots = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestedDate = req.query.date || new Date().toISOString().split('T')[0];
+
+    const providerQuery = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    const provider = await Provider.findOne(providerQuery);
+    const providerIdentities = [id];
+    if (provider) {
+      if (provider.id && !providerIdentities.includes(provider.id)) providerIdentities.push(provider.id);
+      if (provider._id && !providerIdentities.includes(provider._id.toString())) providerIdentities.push(provider._id.toString());
+      if (provider.userId && !providerIdentities.includes(provider.userId)) providerIdentities.push(provider.userId);
+    }
+    if (id === 'prov_1' && !providerIdentities.includes('usr_provider_demo')) {
+      providerIdentities.push('usr_provider_demo');
+    }
+    if (id === 'usr_provider_demo' && !providerIdentities.includes('prov_1')) {
+      providerIdentities.push('prov_1');
+    }
+
+    const activeBookingStatuses = [
+      'BOOKED',
+      'ACCEPTED',
+      'PROVIDER_ACCEPTED',
+      'ON_THE_WAY',
+      'ARRIVED',
+      'IN_PROGRESS'
+    ];
+
+    const activeBookings = await Booking.find({
+      providerId: { $in: providerIdentities },
+      date: requestedDate,
+      status: { $in: activeBookingStatuses }
+    }).select('time').lean();
+
+    const bookedSlots = activeBookings.map(b => b.time).filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      date: requestedDate,
+      providerId: id,
+      bookedSlots
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

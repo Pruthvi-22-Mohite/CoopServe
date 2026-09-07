@@ -371,12 +371,12 @@ export const SmartMatchModal = ({
           provider={selectedProviderForBooking}
           initialService={
             initialService || {
-              item: serviceTitle || selectedProviderForBooking?.skill || 'Service',
-              title: serviceTitle || selectedProviderForBooking?.skill || 'Service',
-              price: selectedProviderForBooking?.startingPrice || 400
+              item: serviceTitle || selectedProviderForBooking?.skill || '',
+              title: serviceTitle || selectedProviderForBooking?.skill || '',
+              price: selectedProviderForBooking?.startingPrice ?? 0
             }
           }
-          initialPrice={initialService?.basePrice ?? selectedProviderForBooking?.startingPrice ?? 400}
+          initialPrice={initialService?.basePrice ?? selectedProviderForBooking?.startingPrice ?? 0}
           onBookingCreated={emergencyMode ? handleEmergencyBookingCreated : undefined}
         />
       )}

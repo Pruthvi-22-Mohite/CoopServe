@@ -71,7 +71,7 @@ export const ProviderCard = ({ provider, onBook }) => {
               <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
               <span>{provider.rating}</span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium">({provider.reviewsCount} reviews)</p>
+            <p className="text-[10px] text-slate-400 font-medium">({provider.reviewsCount ?? 0} {t('common_reviews')})</p>
           </div>
 
           <div className="border-x border-slate-200/60">
@@ -85,9 +85,9 @@ export const ProviderCard = ({ provider, onBook }) => {
           <div>
             <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-emerald-700">
               <Clock className="w-3 h-3 text-emerald-600" />
-              <span className="truncate">{provider.availabilityStatus || 'Available'}</span>
+              <span className="truncate">{provider.availabilityStatus || t('card_available')}</span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium">{provider.experienceYears}+ yrs exp</p>
+            <p className="text-[10px] text-slate-400 font-medium">{provider.experienceYears}+ {t('card_years_experience')}</p>
           </div>
         </div>
 

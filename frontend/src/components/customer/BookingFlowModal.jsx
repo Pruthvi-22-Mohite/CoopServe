@@ -30,7 +30,8 @@ import {
   Navigation,
   Loader2
 } from 'lucide-react';
-import { calculateBookingPrice } from '../../utils/pricingCalculator';
+import { calculateBookingPrice, calculateDistanceKm } from '../../utils/pricingCalculator';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const BookingFlowModal = ({
   isOpen,
@@ -42,14 +43,20 @@ export const BookingFlowModal = ({
 }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1); // 1: Service, 2: Slot & Address, 3: Protected Breakdown, 4: Payment, 5: Confirmation
   const [selectedTask, setSelectedTask] = useState(null);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [timeSlot, setTimeSlot] = useState('11:00 AM - 12:30 PM');
-  const [address, setAddress] = useState(user?.location ? `Flat 402, Green Meadows, ${user.location}` : 'Flat 402, Green Meadows, Kothrud, Pune - 411038');
+  const [timeSlot, setTimeSlot] = useState('');
+  const [address, setAddress] = useState('');
+  const [serviceLocation, setServiceLocation] = useState({ state: '', city: '', area: '', latitude: null, longitude: null });
+  const [locationStatus, setLocationStatus] = useState('idle');
   const [notes, setNotes] = useState('');
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsUnavailable, setSlotsUnavailable] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('Razorpay Sandbox (UPI / Cards / NetBanking)');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -62,12 +69,15 @@ export const BookingFlowModal = ({
       setCreatedBooking(null);
       setPaymentConfirmed(false);
       setIsVerifyingPayment(false);
+      setAddress('');
+      setServiceLocation({ state: '', city: '', area: '', latitude: null, longitude: null });
+      setLocationStatus('idle');
       if (provider?.pricingTiers && provider.pricingTiers.length > 0) {
         setSelectedTask(provider.pricingTiers[0]);
       } else {
         setSelectedTask({
-          item: initialService?.title || provider?.skill || 'Standard Service',
-          price: initialPrice || provider?.startingPrice || 400
+          item: initialService?.title || provider?.skill || '',
+          price: initialPrice || provider?.startingPrice || 0
         });
       }
     }
@@ -75,8 +85,13 @@ export const BookingFlowModal = ({
 
   if (!isOpen || !provider) return null;
 
-  const basePrice = Number(selectedTask?.price || initialPrice || provider.startingPrice || 400);
-  const distanceKm = provider.distanceKm !== undefined ? Number(provider.distanceKm) : 3.2;
+  const basePrice = Number(selectedTask?.price || initialPrice || provider.startingPrice || 0);
+  const distanceKm = calculateDistanceKm(
+    serviceLocation.latitude,
+    serviceLocation.longitude,
+    provider.latitude,
+    provider.longitude
+  ) ?? 0;
   const extraCharges = 0;
 
   const pricing = calculateBookingPrice({
@@ -93,25 +108,118 @@ export const BookingFlowModal = ({
     '06:30 PM - 08:00 PM'
   ];
 
+  // Fetch booked slots whenever date or provider changes
+  useEffect(() => {
+    if (!isOpen || !provider?.id || !date) return;
+    setSlotsLoading(true);
+    setSlotsUnavailable(false);
+    api.getProviderBookedSlots(provider.id, date)
+      .then((res) => {
+        const slots = res.bookedSlots || res.slots || [];
+        setBookedSlots(slots);
+        // Auto-select first available slot
+        const firstAvail = timeSlots.find((s) => !slots.includes(s.split(' - ')[0]));
+        if (firstAvail) setTimeSlot(firstAvail);
+      })
+      .catch(() => {
+        setBookedSlots([]);
+        setSlotsUnavailable(true);
+        setTimeSlot('');
+      })
+      .finally(() => setSlotsLoading(false));
+  }, [date, provider?.id, isOpen]);
+
+  const availableTimeSlots = slotsUnavailable
+    ? []
+    : timeSlots.filter((slot) => !bookedSlots.includes(slot.split(' - ')[0]));
+
+  const captureBookingLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('error');
+      return;
+    }
+    setLocationStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.latitude}&lon=${coords.longitude}&zoom=14&addressdetails=1`, {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' }
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) throw new Error(`Reverse geocoding failed: ${response.status}`);
+          const address = (await response.json()).address || {};
+          const state = address.state || '';
+          const city = address.city || address.town || address.municipality || address.village || address.state_district || '';
+          const area = address.suburb || address.neighbourhood || address.city_district || address.residential || address.quarter || address.county || '';
+          if (!state || !city || !area) throw new Error('Location unavailable');
+          setServiceLocation({ state, city, area, latitude: coords.latitude, longitude: coords.longitude });
+          setLocationStatus('ready');
+        } catch {
+          setLocationStatus('error');
+        }
+      },
+      () => setLocationStatus('error'),
+      { timeout: 8000 }
+    );
+  };
+
   const handleProcessPayment = async () => {
     setIsProcessingPayment(true);
     try {
+      let resolvedLocation = serviceLocation;
+      if (!Number.isFinite(resolvedLocation.latitude) || !Number.isFinite(resolvedLocation.longitude)) {
+        setLocationStatus('loading');
+        try {
+          const locationQuery = [resolvedLocation.area, resolvedLocation.city, resolvedLocation.state].filter(Boolean).join(', ');
+          if (!locationQuery) throw new Error(t('booking_location_required'));
+          const query = encodeURIComponent(locationQuery);
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${query}`, { headers: { Accept: 'application/json' } });
+          const results = await response.json();
+          if (!results[0]) throw new Error(t('booking_location_unavailable'));
+          resolvedLocation = { ...resolvedLocation, latitude: Number(results[0].lat), longitude: Number(results[0].lon) };
+          setServiceLocation(resolvedLocation);
+          setLocationStatus('ready');
+        } catch (locationError) {
+          setLocationStatus('error');
+          throw new Error(t('booking_location_required'));
+        }
+      }
+
+      const resolvedDistanceKm = calculateDistanceKm(
+        resolvedLocation.latitude,
+        resolvedLocation.longitude,
+        provider.latitude,
+        provider.longitude
+      );
+      const bookingPricing = calculateBookingPrice({ basePrice, distanceKm: resolvedDistanceKm ?? 0, extraCharges });
       const bookingPayload = {
         providerId: provider.id,
         serviceTitle: selectedTask?.item || provider.skill,
         category: provider.categories?.[0] || 'general',
-        basePrice: pricing.basePrice,
-        distanceKm: pricing.distanceKm,
-        travelFee: pricing.travelFee,
-        extraCharges: pricing.extraCharges,
-        price: pricing.customerTotal,
-        pricing,
+        basePrice: bookingPricing.basePrice,
+        distanceKm: bookingPricing.distanceKm,
+        travelFee: bookingPricing.travelFee,
+        extraCharges: bookingPricing.extraCharges,
+        price: bookingPricing.customerTotal,
+        pricing: bookingPricing,
         date,
         time: timeSlot.split(' - ')[0],
-        address,
+        address: [resolvedLocation.state, resolvedLocation.city, resolvedLocation.area].filter(Boolean).join(', '),
+        serviceState: resolvedLocation.state,
+        serviceCity: resolvedLocation.city,
+        serviceArea: resolvedLocation.area,
+        serviceLatitude: resolvedLocation.latitude,
+        serviceLongitude: resolvedLocation.longitude,
         notes,
         paymentMethod: 'Razorpay'
       };
+
+      if (slotsUnavailable || !timeSlot || bookedSlots.includes(timeSlot.split(' - ')[0])) {
+        throw new Error(t('booking_slot_unavailable'));
+      }
 
       // 1. Create booking in DB (starts as PENDING payment)
       const res = await api.createBooking(bookingPayload);
@@ -151,7 +259,7 @@ export const BookingFlowModal = ({
         handler: async function () {
           setStep(5);
           setIsVerifyingPayment(true);
-          showToast('Payment submitted! Awaiting webhook verification...', 'info');
+          showToast(t('payment_submitted'), 'info');
 
           // Refetch payment status after 3 seconds
           setTimeout(async () => {
@@ -205,14 +313,14 @@ export const BookingFlowModal = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={step === 5 ? 'Booking Confirmed' : 'Book Protected Service'}
-      description={step === 5 ? 'Your service has been scheduled with CoopServe guarantee' : `Step ${step} of 4 • Transparent Pricing & Protected Payout`}
+      title={step === 5 ? t('booking_confirmed') : t('booking_title')}
+      description={step === 5 ? t('booking_confirmed') : `${t('booking_step_service')} ${step} / 4`}
       maxWidth="max-w-2xl"
     >
       {/* Step Indicator */}
       {step < 5 && (
         <div className="flex items-center justify-between mb-6 px-1">
-          {['Service', 'Schedule & Location', 'Protected Breakdown', 'Payment'].map((label, idx) => {
+          {[t('booking_step_service'), t('booking_step_schedule'), t('booking_step_breakdown'), t('booking_step_payment')].map((label, idx) => {
             const stepNum = idx + 1;
             const isDone = step > stepNum;
             const isCurrent = step === stepNum;
@@ -251,12 +359,12 @@ export const BookingFlowModal = ({
                 <p className="text-[11px] text-slate-500">{provider.skill} • {provider.location}</p>
               </div>
             </div>
-            <Badge variant="coop" size="sm">Trust Score: {provider.trustScore || 94}/100</Badge>
+            <Badge variant="coop" size="sm">{t('booking_trust_score')}: {provider.trustScore ?? 0}/100</Badge>
           </div>
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-              Select Specific Task / Service Item
+              {t('booking_step_service')}
             </label>
             <div className="space-y-2">
               {provider.pricingTiers?.map((tier, idx) => (
@@ -290,7 +398,7 @@ export const BookingFlowModal = ({
               onClick={() => setStep(2)}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Continue to Schedule
+              {t('booking_continue')}
             </Button>
           </div>
         </div>
@@ -302,7 +410,7 @@ export const BookingFlowModal = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Appointment Date
+                {t('booking_date')}
               </label>
               <input
                 type="date"
@@ -315,51 +423,68 @@ export const BookingFlowModal = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Preferred Time Slot
+                {t('booking_time')}
               </label>
               <select
                 value={timeSlot}
                 onChange={(e) => setTimeSlot(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                {timeSlots.map((slot, idx) => (
-                  <option key={idx} value={slot}>
-                    {slot}
-                  </option>
-                ))}
+                {slotsLoading ? (
+                  <option>{t('booking_slots_loading')}</option>
+                ) : availableTimeSlots.length === 0 ? (
+                  <option value="">{t('booking_slots_full')}</option>
+                ) : (
+                  availableTimeSlots.map((slot, idx) => (
+                    <option key={idx} value={slot}>{slot}</option>
+                  ))
+                )}
               </select>
+              {!slotsLoading && availableTimeSlots.length === 0 && (
+                <p className="mt-1 text-xs text-rose-600 font-medium">{slotsUnavailable ? t('booking_slot_unavailable') : t('booking_slots_full')}</p>
+              )}
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Service Address in Pune
-            </label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="House/Flat No, Landmark, Area, Pune - Pincode"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">{t('booking_address')}</label>
+              <div className="flex items-center gap-3">
+                <button type="button" className="text-[11px] font-bold text-emerald-700 hover:underline" onClick={captureBookingLocation} disabled={locationStatus === 'loading'}>
+                  {locationStatus === 'loading' ? t('auth_locating') : t('auth_use_location')}
+                </button>
+                {user?.state && user?.city && user?.neighbourhood && (
+                  <button type="button" className="text-[11px] font-bold text-emerald-700 hover:underline" onClick={() => {
+                    setServiceLocation({ state: user.state, city: user.city, area: user.neighbourhood, latitude: user.lat ?? null, longitude: user.lng ?? null });
+                    setLocationStatus('saved');
+                  }}>{t('booking_use_saved_location')}</button>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input type="text" value={serviceLocation.state} onChange={(e) => setServiceLocation((current) => ({ ...current, state: e.target.value, latitude: null, longitude: null }))} placeholder={t('auth_state')} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900" />
+              <input type="text" value={serviceLocation.city} onChange={(e) => setServiceLocation((current) => ({ ...current, city: e.target.value, latitude: null, longitude: null }))} placeholder={t('auth_city')} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900" />
+              <input type="text" value={serviceLocation.area} onChange={(e) => setServiceLocation((current) => ({ ...current, area: e.target.value, latitude: null, longitude: null }))} placeholder={t('auth_area_placeholder')} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900" />
+            </div>
+            {locationStatus === 'error' && <p className="text-xs text-rose-600">{t('booking_location_required')}</p>}
           </div>
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Service Notes & Instructions (Optional)
+              {t('booking_notes')}
             </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Master bedroom switch sparking, gate code is 1234, please call on arrival."
+              placeholder={t('booking_notes_placeholder')}
               className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => setStep(1)} leftIcon={<ArrowLeft className="w-4 h-4" />}>
-              Back
+              {t('booking_back')}
             </Button>
             <Button
               variant="primary"
@@ -367,7 +492,7 @@ export const BookingFlowModal = ({
               onClick={() => setStep(3)}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Review Protected Price
+              {t('booking_review_price')}
             </Button>
           </div>
         </div>
@@ -384,74 +509,84 @@ export const BookingFlowModal = ({
                   <ShieldCheck className="w-5 h-5 text-emerald-300" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-sm tracking-tight text-white">COOPSERVE PROTECTED BOOKING</h4>
-                  <p className="text-[10px] text-emerald-200 font-medium">100% Guaranteed Transaction</p>
+                  <h4 className="font-extrabold text-sm tracking-tight text-white">{t('booking_protected_title')}</h4>
+                  <p className="text-[10px] text-emerald-200 font-medium">{t('booking_guaranteed_transaction')}</p>
                 </div>
               </div>
-              <Badge variant="success" size="sm">Co-op Verified</Badge>
+              <Badge variant="success" size="sm">{t('booking_coop_verified')}</Badge>
             </div>
 
             <p className="text-xs text-emerald-100/90 leading-relaxed">
-              “Your payment is protected and your service is recorded on CoopServe.”
+              {t('booking_protection_description')}
             </p>
 
             {/* Guaranteed Protections Checklist */}
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-700/60 text-[11px] text-emerald-100">
-              <span className="flex items-center gap-1.5">✓ Verified Provider</span>
-              <span className="flex items-center gap-1.5">✓ Booking Protection</span>
-              <span className="flex items-center gap-1.5">✓ Digital Receipt</span>
-              <span className="flex items-center gap-1.5">✓ Dispute Support</span>
-              <span className="flex items-center gap-1.5">✓ Verified Work Record</span>
-              <span className="flex items-center gap-1.5">✓ 90% Direct Worker Payout</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_verified_provider')}</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_protection')}</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_digital_receipt')}</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_dispute_support')}</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_work_record')}</span>
+              <span className="flex items-center gap-1.5">✓ {t('booking_worker_payout')}</span>
             </div>
           </div>
 
           {/* Transparent Fee Breakdown Card */}
           <Card className="p-4 bg-slate-50 border border-slate-200/90 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Transparent Service Pricing Breakdown</h4>
-              <span className="text-[11px] text-emerald-700 font-bold">Clear Pricing Before Booking</span>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">{t('booking_price_breakdown')}</h4>
+              <span className="text-[11px] text-emerald-700 font-bold">{t('booking_clear_pricing')}</span>
             </div>
 
             {/* Base Price + Distance Fee Line Items */}
             <div className="space-y-2 text-xs">
               <div className="flex justify-between font-medium text-slate-700">
-                <span>Base Service Price ({selectedTask?.item || provider.skill})</span>
+                <span>{t('booking_base_price')} ({selectedTask?.item || provider.skill})</span>
                 <span className="font-bold text-slate-900">₹{pricing.basePrice}</span>
               </div>
               <div className="flex justify-between font-medium text-slate-700">
                 <span className="flex items-center gap-1.5">
                   <Navigation className="w-3.5 h-3.5 text-teal-600" />
-                  Distance Travel Fee ({pricing.distanceKm} km away)
+                  {t('booking_distance_fee')} ({pricing.distanceKm} km)
                 </span>
                 <span className="font-bold text-slate-900">
-                  {pricing.travelFee === 0 ? '₹0 (Free < 2km)' : `₹${pricing.travelFee}`}
+                  {pricing.travelFee === 0 ? `₹0 (${t('booking_free_short_distance')})` : `₹${pricing.travelFee}`}
                 </span>
               </div>
               <div className="flex justify-between font-medium text-slate-700">
-                <span>Extra Work / Material Charges</span>
+                <span>{t('booking_extra_charges')}</span>
                 <span className="font-bold text-slate-900">₹{pricing.extraCharges}</span>
               </div>
 
-              {/* Total Calculation */}
-              <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900">
-                <span>Final Customer Total</span>
-                <span className="text-emerald-700 text-base font-black">₹{pricing.customerTotal}</span>
+              {/* Total + Upfront Breakdown */}
+              <div className="pt-2 border-t border-slate-200 space-y-2">
+                <div className="flex justify-between text-sm font-black text-slate-900">
+                  <span>{t('booking_total')}</span>
+                  <span className="text-emerald-700 text-base font-black">₹{pricing.customerTotal}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
+                  <span>{t('booking_upfront')}</span>
+                  <span>₹{pricing.upfrontPayable}</span>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>{t('booking_remaining')}</span>
+                  <span className="font-semibold">₹{pricing.remainingPayable}</span>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500 italic">Final amount shown before booking • Zero hidden charges</p>
+              <p className="text-[10px] text-slate-500 italic">{t('booking_upfront_note')}</p>
             </div>
 
             {/* Transparent 90/10 Fair Distribution */}
             <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs space-y-1">
               <div className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">
-                Fair Share Economics (90 / 10 Split)
+                {t('booking_fair_share')}
               </div>
               <div className="flex justify-between font-semibold text-emerald-900">
-                <span>Worker Take-Home Payout (90%)</span>
+                <span>{t('booking_worker_earnings')}</span>
                 <span className="font-bold">₹{pricing.workerEarnings}</span>
               </div>
               <div className="flex justify-between font-normal text-emerald-800 text-[11px]">
-                <span>Platform Operations & Dispute Cover (10%)</span>
+                <span>{t('booking_platform_operations')}</span>
                 <span>₹{pricing.platformFee}</span>
               </div>
             </div>
@@ -459,7 +594,7 @@ export const BookingFlowModal = ({
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => setStep(2)} leftIcon={<ArrowLeft className="w-4 h-4" />}>
-              Back
+              {t('booking_back')}
             </Button>
             <Button
               variant="coop"
@@ -467,7 +602,7 @@ export const BookingFlowModal = ({
               onClick={() => setStep(4)}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Proceed to Payment (₹{pricing.customerTotal})
+              {t('booking_proceed_payment')} (₹{pricing.customerTotal})
             </Button>
           </div>
         </div>
@@ -478,40 +613,40 @@ export const BookingFlowModal = ({
         <div className="space-y-4 animate-in fade-in duration-200">
           <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
             <div>
-              <p className="text-xs font-bold text-emerald-900">Total Payable Amount</p>
+              <p className="text-xs font-bold text-emerald-900">{t('booking_upfront')}</p>
               <p className="text-[10px] text-emerald-700">
-                ₹{pricing.basePrice} Base + ₹{pricing.travelFee} Travel ({pricing.distanceKm} km)
+                Total: ₹{pricing.customerTotal} • Travel ({pricing.distanceKm} km): ₹{pricing.travelFee}
               </p>
             </div>
-            <span className="text-xl font-black text-emerald-800">₹{pricing.customerTotal}</span>
+            <span className="text-xl font-black text-emerald-800">₹{pricing.upfrontPayable}</span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Payment Gateway
+                {t('payment_gateway')}
               </span>
-              <Badge variant="coop" size="sm">Razorpay Sandbox</Badge>
+              <Badge variant="coop" size="sm">{t('payment_sandbox')}</Badge>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Clicking below will open the official <strong>Razorpay Checkout</strong> sandbox. You can pay using test UPI, Credit/Debit cards, Net Banking, or test Wallets.
+              {t('payment_gateway_description')}
             </p>
             <div className="grid grid-cols-4 gap-2 pt-1 text-[11px] text-slate-600">
               <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
                 <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-                <span>UPI</span>
+                <span>{t('payment_upi')}</span>
               </div>
               <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
                 <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Cards</span>
+                <span>{t('payment_cards')}</span>
               </div>
               <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
                 <Building className="w-3.5 h-3.5 text-emerald-600" />
-                <span>NetBank</span>
+                <span>{t('payment_netbanking')}</span>
               </div>
               <div className="flex items-center gap-1 bg-white p-2 rounded-lg border border-slate-200">
                 <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Wallets</span>
+                <span>{t('payment_wallets')}</span>
               </div>
             </div>
           </div>
@@ -527,7 +662,7 @@ export const BookingFlowModal = ({
               onClick={handleProcessPayment}
               rightIcon={<ShieldCheck className="w-4 h-4" />}
             >
-              Pay ₹{pricing.customerTotal} with Razorpay
+              {t('booking_pay_upfront')} ₹{pricing.upfrontPayable} via Razorpay
             </Button>
           </div>
         </div>
@@ -573,33 +708,33 @@ export const BookingFlowModal = ({
           {/* Digital Receipt Card */}
           <Card className="p-4 bg-slate-50 border border-slate-200 text-left space-y-3 max-w-lg mx-auto">
             <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-xs">
-              <span className="font-bold text-slate-700">Booking ID</span>
+              <span className="font-bold text-slate-700">{t('payment_booking_id')}</span>
               <span className="font-black text-emerald-700">{createdBooking.id}</span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Transaction ID</span>
+              <span className="text-slate-500">{t('payment_transaction_id')}</span>
               <span className="font-bold text-slate-800">{createdBooking.transactionId}</span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Assigned Pro</span>
+              <span className="text-slate-500">{t('payment_assigned_provider')}</span>
               <span className="font-bold text-slate-800">{createdBooking.providerName}</span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Service</span>
+              <span className="text-slate-500">{t('payment_service')}</span>
               <span className="font-bold text-slate-800">{createdBooking.serviceTitle}</span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Scheduled Time</span>
+              <span className="text-slate-500">{t('payment_scheduled_time')}</span>
               <span className="font-bold text-slate-800">{createdBooking.date} at {createdBooking.time}</span>
             </div>
 
             <div className="pt-2 border-t border-slate-200 space-y-1 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>Base Service Price</span>
+                <span>{t('booking_base_price')}</span>
                 <span className="font-semibold text-slate-900">₹{createdBooking.pricing?.basePrice || pricing.basePrice}</span>
               </div>
               <div className="flex justify-between text-slate-600">
@@ -607,15 +742,15 @@ export const BookingFlowModal = ({
                 <span className="font-semibold text-slate-900">₹{createdBooking.pricing?.travelFee ?? pricing.travelFee}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Extra Charges</span>
+                <span>{t('booking_extra_charges')}</span>
                 <span className="font-semibold text-slate-900">₹{createdBooking.pricing?.extraCharges || 0}</span>
               </div>
               <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center font-black">
-                <span className="text-slate-900">Total Customer Paid</span>
+                <span className="text-slate-900">{t('payment_total_customer')}</span>
                 <span className="text-emerald-700 text-sm">₹{createdBooking.pricing?.customerTotal || createdBooking.pricing?.customerPayment || pricing.customerTotal}</span>
               </div>
               <div className="flex justify-between text-[11px] text-slate-500 pt-1">
-                <span>Worker Take-Home Payout (90%)</span>
+                <span>{t('booking_worker_earnings')}</span>
                 <span className="font-bold text-emerald-800">₹{createdBooking.pricing?.workerEarnings || pricing.workerEarnings}</span>
               </div>
             </div>
@@ -632,7 +767,7 @@ export const BookingFlowModal = ({
                 navigate('/customer/bookings');
               }}
             >
-              View All Bookings
+              {t('booking_view_all')}
             </Button>
             <Button
               variant="primary"
@@ -644,7 +779,7 @@ export const BookingFlowModal = ({
               }}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Track Live Service Status
+              {t('booking_track_status')}
             </Button>
           </div>
         </div>

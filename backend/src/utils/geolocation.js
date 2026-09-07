@@ -2,6 +2,31 @@ export const DEFAULT_GEO_VERIFICATION_RADIUS_METERS = Number(
   process.env.GEOTAG_VERIFICATION_RADIUS_METERS || 125
 );
 
+const geocodeCache = new Map();
+
+export const geocodePlace = async (place) => {
+  const query = String(place || '').trim();
+  if (!query) return null;
+  const cacheKey = query.toLowerCase();
+  if (geocodeCache.has(cacheKey)) return geocodeCache.get(cacheKey);
+
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'CoopServe/1.0 location resolver' }
+    });
+    if (!response.ok) return null;
+    const results = await response.json();
+    const result = results?.[0];
+    if (!result) return null;
+    const coordinates = { latitude: Number(result.lat), longitude: Number(result.lon) };
+    if (!Number.isFinite(coordinates.latitude) || !Number.isFinite(coordinates.longitude)) return null;
+    geocodeCache.set(cacheKey, coordinates);
+    return coordinates;
+  } catch {
+    return null;
+  }
+};
+
 export const getAllowedGeotagRadiusMeters = () => {
   const parsed = Number(process.env.GEOTAG_VERIFICATION_RADIUS_METERS);
   if (Number.isFinite(parsed) && parsed > 0) {

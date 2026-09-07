@@ -24,14 +24,19 @@ export const getCustomerProfile = async (req, res) => {
       success: true,
       profile: {
         ...cleanUser,
-        savedAddresses: [
+        savedAddresses: cleanUser.savedAddresses?.length > 0 ? cleanUser.savedAddresses : (cleanUser.isDemoAccount ? [
           { id: 'addr_1', label: 'Home', address: 'Flat 402, Green Meadows, Kothrud, Pune - 411038', isDefault: true },
           { id: 'addr_2', label: 'Office', address: '4th Floor, Tech Park, Baner, Pune - 411045', isDefault: false }
-        ],
+        ] : []),
         rewards: {
-          points: cleanUser.rewardsPoints || 450,
-          tier: 'Cooperative Silver Member',
-          discountsAvailable: 2
+          points: cleanUser.rewardsPoints !== undefined && cleanUser.rewardsPoints !== null ? cleanUser.rewardsPoints : 0,
+          tier: (cleanUser.rewardsPoints || 0) >= 500
+            ? 'Cooperative Gold Member'
+            : (cleanUser.rewardsPoints || 0) >= 100
+            ? 'Cooperative Silver Member'
+            : 'Cooperative Citizen Member',
+          discountsAvailable: (cleanUser.rewardsPoints || 0) >= 100 ? Math.floor((cleanUser.rewardsPoints || 0) / 100) : 0,
+          earningRule: 'Earn 1 Reward Point for every ₹10 spent on completed and verified service bookings.'
         }
       }
     });

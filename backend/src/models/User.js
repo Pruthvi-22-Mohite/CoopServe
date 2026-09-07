@@ -48,15 +48,15 @@ const userSchema = new mongoose.Schema({
   },
   location: {
     type: String,
-    default: 'Pune, MH'
+    default: ''
   },
   state: {
     type: String,
-    default: 'Maharashtra'
+    default: ''
   },
   city: {
     type: String,
-    default: 'Pune'
+    default: ''
   },
   neighbourhood: {
     type: String,
@@ -94,7 +94,7 @@ const userSchema = new mongoose.Schema({
   },
   rewardsPoints: {
     type: Number,
-    default: 100
+    default: 0
   },
   memberSince: {
     type: String,
@@ -119,7 +119,7 @@ const userSchema = new mongoose.Schema({
   },
   rating: {
     type: Number,
-    default: 5.0
+    default: 0
   },
   reviewsCount: {
     type: Number,
@@ -140,6 +140,17 @@ const userSchema = new mongoose.Schema({
   coopMemberId: {
     type: String,
     default: ''
+  },
+  workerId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+    default: ''
+  },
+  vehicleAvailable: {
+    type: Boolean,
+    default: false
   },
   startingPrice: {
     type: Number,

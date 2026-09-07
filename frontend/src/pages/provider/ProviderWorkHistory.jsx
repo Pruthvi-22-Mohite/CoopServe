@@ -126,7 +126,7 @@ export const ProviderWorkHistory = () => {
                   </div>
 
                   <div className="text-right shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 flex sm:flex-col justify-between items-end">
-                    <span className="text-emerald-800 font-black text-base">+₹{b.pricing?.workerEarnings || 440}</span>
+                    <span className="text-emerald-800 font-black text-base">+₹{b.pricing?.workerEarnings ?? 0}</span>
                     {b.rating ? (
                       <span className="text-[10px] text-slate-700 flex items-center gap-1 font-bold mt-0.5">
                         <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> {Number(b.rating).toFixed(1)} Rating (Verified)

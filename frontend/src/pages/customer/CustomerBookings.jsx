@@ -58,24 +58,24 @@ export const CustomerBookings = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'COMPLETED':
-        return <Badge variant="success" size="sm">✓ Completed</Badge>;
+        return <Badge variant="success" size="sm">✓ {t('status_completed')}</Badge>;
       case 'CANCELLED':
-        return <Badge variant="danger" size="sm">Cancelled by Customer</Badge>;
+        return <Badge variant="danger" size="sm">{t('status_cancelled')}</Badge>;
       case 'REJECTED':
       case 'DECLINED':
-        return <Badge variant="danger" size="sm">Declined by Provider</Badge>;
+        return <Badge variant="danger" size="sm">{t('status_declined')}</Badge>;
       case 'IN_PROGRESS':
-        return <Badge variant="warning" size="sm">In Progress</Badge>;
+        return <Badge variant="warning" size="sm">{t('status_in_progress')}</Badge>;
       case 'ARRIVED':
-        return <Badge variant="info" size="sm">Arrived at Site</Badge>;
+        return <Badge variant="info" size="sm">{t('status_arrived')}</Badge>;
       case 'ON_THE_WAY':
-        return <Badge variant="info" size="sm">On The Way</Badge>;
+        return <Badge variant="info" size="sm">{t('status_on_way')}</Badge>;
       case 'PROVIDER_ACCEPTED':
       case 'ACCEPTED':
-        return <Badge variant="success" size="sm">Pro Accepted</Badge>;
+        return <Badge variant="success" size="sm">{t('status_accepted')}</Badge>;
       case 'BOOKED':
       default:
-        return <Badge variant="protected" size="sm">Order Confirmed</Badge>;
+        return <Badge variant="protected" size="sm">{t('status_confirmed')}</Badge>;
     }
   };
 
@@ -83,8 +83,8 @@ export const CustomerBookings = () => {
     <div className="space-y-6">
       <PageHeader
         title={t('nav_bookings')}
-        description="Track your real-time household service orders, digital payment receipts, and CoopServe Protection guarantees."
-        breadcrumbs={['Home', 'Bookings']}
+        description={t('common_guarantee')}
+        breadcrumbs={[t('nav_home'), t('nav_bookings')]}
         actions={
           <Button
             variant="primary"
@@ -92,7 +92,7 @@ export const CustomerBookings = () => {
             onClick={() => navigate('/customer/services')}
             rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
           >
-            New Service Booking
+            {t('booking_continue')}
           </Button>
         }
       />
@@ -107,7 +107,7 @@ export const CustomerBookings = () => {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          All Bookings ({bookings.length})
+          {t('bookings_filter_all')} ({bookings.length})
         </button>
         <button
           onClick={() => setActiveFilter('active')}
@@ -117,7 +117,7 @@ export const CustomerBookings = () => {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          Active / In Progress ({bookings.filter(b => !['COMPLETED', 'CANCELLED', 'REJECTED', 'DECLINED'].includes(b.status)).length})
+          {t('bookings_filter_active')} ({bookings.filter(b => !['COMPLETED', 'CANCELLED', 'REJECTED', 'DECLINED'].includes(b.status)).length})
         </button>
         <button
           onClick={() => setActiveFilter('completed')}
@@ -127,7 +127,7 @@ export const CustomerBookings = () => {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          Completed History ({bookings.filter(b => b.status === 'COMPLETED').length})
+          {t('bookings_filter_completed')} ({bookings.filter(b => b.status === 'COMPLETED').length})
         </button>
         <button
           onClick={() => setActiveFilter('declined')}
@@ -137,19 +137,19 @@ export const CustomerBookings = () => {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          Declined / Cancelled ({bookings.filter(b => ['CANCELLED', 'REJECTED', 'DECLINED'].includes(b.status)).length})
+          {t('bookings_filter_declined')} ({bookings.filter(b => ['CANCELLED', 'REJECTED', 'DECLINED'].includes(b.status)).length})
         </button>
       </div>
 
       {/* Bookings List */}
       {isLoading ? (
-        <LoadingState message="Loading your service orders..." />
+        <LoadingState message={t('bookings_loading')} />
       ) : filteredBookings.length === 0 ? (
         <EmptyState
           icon={CalendarCheck}
-          title="No bookings found in this view"
-          description="Schedule a certified electrician, plumber, cleaner, or technician with Protected Booking guarantee."
-          actionLabel="Book a Service Now"
+          title={t('bookings_empty_title')}
+          description={t('bookings_empty_description')}
+          actionLabel={t('bookings_book_service')}
           onAction={() => navigate('/customer/services')}
         />
       ) : (
@@ -176,7 +176,7 @@ export const CustomerBookings = () => {
                       {getStatusBadge(booking.status)}
                       <Badge variant="protected" size="sm">
                         <ShieldCheck className="w-3 h-3 mr-1" />
-                        CoopServe Protected
+                        {t('common_coop_protected')}
                       </Badge>
                     </div>
 
@@ -185,7 +185,7 @@ export const CustomerBookings = () => {
                     </h3>
 
                     <p className="text-xs text-slate-600 font-medium">
-                      Assigned Pro: <strong className="text-slate-900">{booking.providerName}</strong> ({booking.providerSkill})
+                      {t('booking_assigned_provider')}: <strong className="text-slate-900">{booking.providerName}</strong> ({booking.providerSkill})
                     </p>
 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1">
@@ -205,10 +205,10 @@ export const CustomerBookings = () => {
                 {/* Right Side: Price Split & View Button */}
                 <div className="flex items-center justify-between lg:justify-end gap-5 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0">
                   <div className="text-left lg:text-right">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Protected Total</span>
-                    <span className="text-lg font-black text-slate-900">₹{booking.pricing?.customerTotal || booking.pricing?.customerPayment || 420}</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">{t('booking_protected_total')}</span>
+                    <span className="text-lg font-black text-slate-900">₹{booking.pricing?.customerTotal ?? booking.pricing?.customerPayment ?? 0}</span>
                     <span className="text-[10px] text-emerald-700 font-semibold block">
-                      Paid via {booking.paymentMethod} • ₹{booking.pricing?.workerEarnings || 378} Net
+                      {booking.paymentMethod} • ₹{booking.pricing?.workerEarnings ?? 0}
                     </span>
                   </div>
 
@@ -222,7 +222,7 @@ export const CustomerBookings = () => {
                           navigate(`/customer/providers?category=${booking.category || 'all'}`);
                         }}
                       >
-                        Re-match Pro
+                        {t('booking_rematch')}
                       </Button>
                     )}
                     <Button
@@ -234,7 +234,7 @@ export const CustomerBookings = () => {
                       }}
                       rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                     >
-                      View Details & Receipt
+                      {t('booking_view_receipt')}
                     </Button>
                   </div>
                 </div>

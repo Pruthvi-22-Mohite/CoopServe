@@ -32,8 +32,8 @@ export const calculateSkillScore = (provider, categoryId, serviceTitle = '') => 
 
   // Related category matches
   if (
-    (searchCat === 'plumbing' && skillText.includes('pipe')) ||
-    (searchCat === 'electrical' && skillText.includes('wiring')) ||
+    (searchCat === 'plumbing' && (skillText.includes('pipe') || skillText.includes('plumb'))) ||
+    (searchCat === 'electrical' && (skillText.includes('wiring') || skillText.includes('electric'))) ||
     (searchCat === 'cleaning' && skillText.includes('sanitization')) ||
     (searchCat === 'appliance' && (skillText.includes('ac') || skillText.includes('technician')))
   ) {
@@ -46,7 +46,8 @@ export const calculateSkillScore = (provider, categoryId, serviceTitle = '') => 
 /**
  * Calculates Proximity Score (0 - 100) based on distance in km
  */
-export const calculateDistanceScore = (distanceKm = 3.0, maxAcceptableKm = 10.0) => {
+export const calculateDistanceScore = (distanceKm = null, maxAcceptableKm = 10.0) => {
+  if (!Number.isFinite(Number(distanceKm))) return 0;
   if (distanceKm <= 1.0) return 100;
   if (distanceKm <= 2.5) return 92;
   if (distanceKm <= 5.0) return 80;
@@ -59,7 +60,7 @@ export const calculateDistanceScore = (distanceKm = 3.0, maxAcceptableKm = 10.0)
  * Calculates Availability Score (0 - 100)
  */
 export const calculateAvailabilityScore = (provider, urgency = 'today') => {
-  if (!provider.isAvailable) return 20;
+  if (!isProviderEligible(provider)) return 0;
 
   if (provider.availabilityStatus === 'Available Today') {
     return 100;
@@ -68,6 +69,18 @@ export const calculateAvailabilityScore = (provider, urgency = 'today') => {
     return urgency === 'today' ? 65 : 95;
   }
   return 50;
+};
+
+export const isProviderEligible = (provider, customerLocation = '') => {
+  if (!provider || provider.status === 'Suspended' || provider.isAvailable === false || provider.availabilityStatus === 'Off Duty') {
+    return false;
+  }
+
+  const requestedLocation = String(customerLocation || '').trim().toLowerCase();
+  if (!requestedLocation || !provider.serviceAreas?.length) return true;
+
+  const providerCoverage = provider.serviceAreas.map((area) => String(area).toLowerCase());
+  return providerCoverage.some((area) => requestedLocation.includes(area) || area.includes(requestedLocation));
 };
 
 /**
@@ -149,13 +162,17 @@ export const matchProviders = (providers, criteria = {}) => {
   const {
     categoryId = 'all',
     serviceTitle = '',
-    customerLocation = 'Kothrud, Pune',
+    customerLocation = '',
     urgency = 'today',
     maxPrice,
     minRating
   } = criteria;
 
-  let candidates = [...providers];
+  let candidates = providers.filter((provider) => isProviderEligible(provider, customerLocation));
+
+  if (categoryId && categoryId !== 'all') {
+    candidates = candidates.filter((provider) => calculateSkillScore(provider, categoryId, serviceTitle) >= 90);
+  }
 
   // Optional pre-filters
   if (maxPrice) {
@@ -167,9 +184,9 @@ export const matchProviders = (providers, criteria = {}) => {
 
   const scoredProviders = candidates.map((provider) => {
     const skillScore = calculateSkillScore(provider, categoryId, serviceTitle);
-    const distanceScore = calculateDistanceScore(provider.distanceKm || 3.0);
+    const distanceScore = calculateDistanceScore(provider.distanceKm);
     const availabilityScore = calculateAvailabilityScore(provider, urgency);
-    const ratingScore = calculateRatingScore(provider.rating || 4.5);
+    const ratingScore = calculateRatingScore(provider.rating || 0);
     const experienceScore = Math.min(100, (provider.experienceYears || 3) * 10);
     const workloadFairnessScore = calculateWorkloadFairnessScore(provider);
     const trustScore = provider.trustScore || 85;

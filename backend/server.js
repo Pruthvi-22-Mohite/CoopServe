@@ -39,11 +39,22 @@ const app = express();
 const server = http.createServer(app);
 
 // Socket.IO configuration
-const clientOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+const configuredClientOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedClientOrigins = new Set([
+  configuredClientOrigin,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+]);
+const corsOrigin = (origin, callback) => {
+  if (!origin || allowedClientOrigins.has(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error('Origin is not allowed by CoopServe CORS policy'));
+};
 
 const io = new Server(server, {
   cors: {
-    origin: clientOrigin,
+    origin: corsOrigin,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
   }
@@ -51,7 +62,7 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors({
-  origin: clientOrigin,
+  origin: corsOrigin,
   credentials: true
 }));
 

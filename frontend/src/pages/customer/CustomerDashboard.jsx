@@ -39,13 +39,15 @@ export const CustomerDashboard = () => {
   const [activeBooking, setActiveBooking] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [customerRating, setCustomerRating] = useState(0);
+  const [completedBookingCount, setCompletedBookingCount] = useState(0);
 
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
         const [catRes, provRes, bookRes] = await Promise.all([
           api.getCategories(),
-          api.getProviders({ sortBy: 'distance' }),
+          api.getProviders({ sortBy: 'distance', latitude: user?.lat, longitude: user?.lng, location: [user?.neighbourhood, user?.city, user?.state].filter(Boolean).join(', ') || undefined }),
           api.getBookings()
         ]);
 
@@ -57,6 +59,10 @@ export const CustomerDashboard = () => {
           setAiPick(topPick);
         }
         if (bookRes.success && bookRes.bookings.length > 0) {
+          const completed = bookRes.bookings.filter((booking) => booking.status === 'COMPLETED');
+          setCompletedBookingCount(completed.length);
+          const rated = completed.filter((booking) => Number(booking.rating) > 0);
+          setCustomerRating(rated.length ? rated.reduce((sum, booking) => sum + Number(booking.rating), 0) / rated.length : 0);
           const active = bookRes.bookings.find(b => b.status !== 'COMPLETED' && b.status !== 'CANCELLED') || bookRes.bookings[0];
           setActiveBooking(active);
         }
@@ -68,7 +74,7 @@ export const CustomerDashboard = () => {
     };
 
     loadDashboardData();
-  }, []);
+  }, [user?.lat, user?.lng]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -93,7 +99,7 @@ export const CustomerDashboard = () => {
             <span>{t('common_guarantee')}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {t('dash_welcome')}, {user?.name?.split(' ')[0] || 'Ananya'}!
+            {t('dash_welcome')}, {user?.name?.split(' ')[0] || ''}!
           </h1>
           <p className="text-sm text-slate-200 leading-relaxed">
             {t('dash_banner_sub')}
@@ -129,33 +135,33 @@ export const CustomerDashboard = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title={t('dash_stat_protected')}
-          value="1 Active"
-          subtitle="CS-2026-00128"
-          badgeText="100% Protected"
+          value={activeBooking ? '1' : '0'}
+          subtitle={activeBooking?.id || ''}
+          badgeText={activeBooking ? t('dash_active_booking') : ''}
           accentColor="emerald"
           icon={ShieldCheck}
           onClick={() => navigate('/customer/bookings')}
         />
         <StatCard
           title={t('dash_stat_points')}
-          value="450 Pts"
-          subtitle="Silver Co-op Member"
-          badgeText="₹45 Cash Value"
+          value={`${user?.rewards?.points ?? 0} ${t('dash_points_suffix')}`}
+          subtitle={user?.rewards?.tier || ''}
+          badgeText=""
           accentColor="amber"
           icon={Gift}
           onClick={() => navigate('/customer/profile')}
         />
         <StatCard
           title={t('dash_stat_trust')}
-          value="100% Verified"
-          subtitle="Zero leakage risk"
+          value={completedBookingCount}
+          subtitle={t('dash_completed_services')}
           accentColor="teal"
           icon={CheckCircle2}
         />
         <StatCard
           title={t('dash_stat_rating')}
-          value="4.92 ⭐"
-          subtitle="Pune Cooperative Pool"
+          value={`${customerRating.toFixed(1)} ⭐`}
+          subtitle={t('dash_customer_rating')}
           accentColor="indigo"
           icon={Sparkles}
         />
@@ -169,11 +175,11 @@ export const CustomerDashboard = () => {
               <div className="flex items-center gap-2">
                 <Badge variant="protected" size="sm">
                   <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-                  COOPSERVE PROTECTED BOOKING
+                  {t('booking_protected_badge')}
                 </Badge>
                 <span className="text-xs font-bold text-slate-500">ID: {activeBooking.id}</span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                  Status: {activeBooking.status}
+                  {t('booking_status_label')}: {activeBooking.status}
                 </span>
               </div>
               <h3 className="text-lg font-bold text-slate-900">
@@ -216,10 +222,10 @@ export const CustomerDashboard = () => {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-slate-900">{t('dash_recommended_title')}</h2>
-                <p className="text-xs text-slate-500">Smart balancing of skill, response time, distance and fair workload</p>
+                <p className="text-xs text-slate-500">{t('dash_recommendation_description')}</p>
               </div>
             </div>
-            <Badge variant="trust" size="sm">97% AI Match Score</Badge>
+            <Badge variant="trust" size="sm">{t('dash_ai_match_score')}</Badge>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -227,37 +233,37 @@ export const CustomerDashboard = () => {
             <Card className="p-5 bg-gradient-to-br from-slate-900 to-indigo-950 text-white flex flex-col justify-between">
               <div>
                 <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-2">
-                  <Award className="w-4 h-4" /> Why AI Recommends {aiPick.name}
+                  <Award className="w-4 h-4" /> {t('dash_ai_recommendation_reason')} {aiPick.name}
                 </div>
-                <h4 className="text-base font-bold mb-3">Multi-Factor Cooperative Scoring</h4>
+                <h4 className="text-base font-bold mb-3">{t('dash_multi_factor_scoring')}</h4>
                 <div className="space-y-2 text-xs text-slate-300">
                   <div className="flex items-center justify-between">
-                    <span>✓ Skill & Certification Match</span>
+                    <span>✓ {t('dash_skill_match')}</span>
                     <span className="font-bold text-emerald-400">98% Match</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>✓ Proximity ({aiPick.distanceKm} km from Kothrud)</span>
+                    <span>✓ {t('dash_proximity')} ({aiPick.distanceKm} km)</span>
                     <span className="font-bold text-teal-400">94% Distance</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>✓ Cooperative Trust Score ({aiPick.trustScore}/100)</span>
+                    <span>✓ {t('dash_trust_score')} ({aiPick.trustScore}/100)</span>
                     <span className="font-bold text-indigo-400">Top 3% Tier</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>✓ Fair Workload Distribution</span>
-                    <span className="font-bold text-amber-400">Balanced Allocation</span>
+                    <span>✓ {t('dash_workload_distribution')}</span>
+                    <span className="font-bold text-amber-400">{t('dash_balanced_allocation')}</span>
                   </div>
                 </div>
               </div>
 
               <div className="pt-4 mt-3 border-t border-slate-800 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">Guaranteed fixed fee via Protected Booking</span>
+                <span className="text-[11px] text-slate-400">{t('dash_fixed_fee_guarantee')}</span>
                 <Button
                   variant="coop"
                   size="sm"
                   onClick={() => navigate(`/customer/provider/${aiPick.id}`)}
                 >
-                  View Profile & Book
+                  {t('dash_view_profile_book')}
                 </Button>
               </div>
             </Card>

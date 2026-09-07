@@ -7,6 +7,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { Login } from './pages/auth/Login';
 import { Register } from './pages/auth/Register';
+import { AdminLogin } from './pages/auth/AdminLogin';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
 import { ResetPassword } from './pages/auth/ResetPassword';
 
@@ -73,6 +74,7 @@ export const App = () => {
       {/* Public Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 

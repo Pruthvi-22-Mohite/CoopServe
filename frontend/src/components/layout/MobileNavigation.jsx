@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   LayoutDashboard,
   Search,
@@ -13,13 +14,14 @@ import {
 
 export const MobileNavigation = () => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const role = user?.role || 'CUSTOMER';
 
   const customerTabs = [
-    { to: '/customer/dashboard', label: 'Home', icon: LayoutDashboard },
-    { to: '/customer/services', label: 'Services', icon: Search },
-    { to: '/customer/bookings', label: 'Bookings', icon: CalendarCheck },
-    { to: '/cooperative', label: 'Co-op', icon: Sparkles }
+    { to: '/customer/dashboard', label: t('nav_home'), icon: LayoutDashboard },
+    { to: '/customer/services', label: t('nav_services'), icon: Search },
+    { to: '/customer/bookings', label: t('nav_bookings'), icon: CalendarCheck },
+    { to: '/cooperative', label: t('nav_cooperative'), icon: Sparkles }
   ];
 
   const providerTabs = [

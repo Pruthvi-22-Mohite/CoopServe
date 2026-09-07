@@ -57,31 +57,8 @@ export const AuthProvider = ({ children }) => {
         // No valid refresh cookie present
       }
 
-      // 3. Fallback to default demo customer user for initial demo exploration
-      const defaultDemoCustomer = {
-        id: 'usr_customer_demo',
-        name: 'Ananya Sharma',
-        email: 'customer@coopserve.demo',
-        role: 'CUSTOMER',
-        location: 'Kothrud, Pune',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-        rewardsPoints: 450
-      };
-
-      try {
-        const demoRes = await api.demoLogin('CUSTOMER');
-        if (demoRes.success && demoRes.user) {
-          api.setToken(demoRes.token);
-          setToken(demoRes.token);
-          setUser(demoRes.user);
-        } else {
-          setUser(defaultDemoCustomer);
-        }
-      } catch (err) {
-        setUser(defaultDemoCustomer);
-      } finally {
-        setIsLoading(false);
-      }
+      setUser(null);
+      setIsLoading(false);
     };
 
     initializeAuth();
@@ -101,6 +78,26 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: res.message };
     } catch (err) {
       showToast(err.message || 'Login failed', 'error');
+      return { success: false, message: err.message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const adminLogin = async (email, password) => {
+    setIsLoading(true);
+    try {
+      const res = await api.adminLogin(email, password);
+      if (res.success) {
+        api.setToken(res.token);
+        setToken(res.token);
+        setUser(res.user);
+        showToast(`Welcome back, ${res.user.name}!`, 'success');
+        return { success: true, user: res.user };
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      showToast(err.message || 'Admin login failed', 'error');
       return { success: false, message: err.message };
     } finally {
       setIsLoading(false);
@@ -129,9 +126,9 @@ export const AuthProvider = ({ children }) => {
           name: 'Ananya Sharma',
           email: 'customer@coopserve.demo',
           role: 'CUSTOMER',
-          location: 'Kothrud, Pune',
+          location: '',
           avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-          rewardsPoints: 450
+          rewardsPoints: 0
         },
         SERVICE_PROVIDER: {
           id: 'usr_provider_demo',
@@ -205,6 +202,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: !!user,
         isLoading,
         login,
+        adminLogin,
         demoLogin,
         register,
         logout,

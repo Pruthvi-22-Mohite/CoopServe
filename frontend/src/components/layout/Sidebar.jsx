@@ -29,7 +29,7 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
   const customerLinks = [
     { to: '/customer/dashboard', label: t('nav_dashboard'), icon: LayoutDashboard },
     { to: '/customer/services', label: t('nav_services'), icon: Search },
-    { to: '/customer/providers', label: 'Verified Providers', icon: Users },
+    { to: '/customer/providers', label: t('nav_verified_providers'), icon: Users },
     { to: '/customer/bookings', label: t('nav_bookings'), icon: CalendarCheck },
     { to: '/customer/notifications', label: t('nav_notifications'), icon: Bell },
     { to: '/customer/profile', label: t('nav_profile'), icon: User },
@@ -90,7 +90,7 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
         <div className="p-4 space-y-6 overflow-y-auto">
           {/* Active Role Label */}
           <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/60">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Portal View</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('layout_portal_view')}</p>
             <p className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 mt-0.5">
               {role === 'ADMIN' ? '🛡️ Cooperative Admin' : role === 'SERVICE_PROVIDER' ? '⚡ Worker / Service Partner' : '🏠 Household Customer'}
             </p>
@@ -134,10 +134,10 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
         <div className="p-4 border-t border-slate-100 bg-emerald-50/40 m-3 rounded-2xl border">
           <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold mb-1">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>CoopServe Guarantee</span>
+            <span>{t('common_guarantee_title')}</span>
           </div>
           <p className="text-[11px] text-emerald-700/90 leading-tight">
-            Protected bookings, transparent fees & community-owned safety net.
+            {t('common_guarantee_description')}
           </p>
         </div>
       </aside>

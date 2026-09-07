@@ -38,6 +38,19 @@ export const calculateTravelFee = (distanceKm) => {
   return slab ? slab.fee : 80;
 };
 
+export const calculateDistanceKm = (latitude1, longitude1, latitude2, longitude2) => {
+  const values = [latitude1, longitude1, latitude2, longitude2].map(Number);
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  const [lat1, lon1, lat2, lon2] = values;
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 /**
  * Calculates complete transparent price breakdown
  * @param {Object} params
@@ -48,7 +61,7 @@ export const calculateTravelFee = (distanceKm) => {
  */
 export const calculateBookingPrice = ({
   basePrice = 400,
-  distanceKm = 3.2,
+  distanceKm = 0,
   extraCharges = 0
 }) => {
   const base = Math.max(0, Math.round(Number(basePrice) || 0));
@@ -60,13 +73,26 @@ export const calculateBookingPrice = ({
   const platformFee = Math.round(customerTotal * (PLATFORM_FEE_PERCENT / 100));
   const workerEarnings = customerTotal - platformFee;
 
+  // 25% upfront customer payment (Requirement 8)
+  const upfrontPayable = Math.round(customerTotal * 0.25);
+  const remainingPayable = customerTotal - upfrontPayable;
+
+  // Cancellation charges are 10% of the amount paid upfront.
+  const cancellationDeduction = Math.round(upfrontPayable * 0.10);
+  const cancellationRefund = Math.max(0, upfrontPayable - cancellationDeduction);
+
   return {
     basePrice: base,
     distanceKm: dist,
     travelFee,
     extraCharges: extra,
     customerTotal,
-    customerPayment: customerTotal, // backward compatibility
+    totalBookingAmount: customerTotal,
+    upfrontPayable,
+    customerPayment: upfrontPayable, // 25% payable upfront by customer
+    remainingPayable,
+    cancellationDeduction,
+    cancellationRefund,
     platformFee,
     platformOperations: platformFee, // backward compatibility
     workerEarnings

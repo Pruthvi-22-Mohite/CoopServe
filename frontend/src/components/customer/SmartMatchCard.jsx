@@ -24,23 +24,16 @@ export const SmartMatchCard = ({ matchResult, onBook }) => {
   if (!matchResult) return null;
 
   const provider = matchResult.topMatch || matchResult;
-  const matchScore = provider.matchScore || 94;
-  const reasons = provider.reasons || [
-    '✓ Required skill match in trade',
-    '✓ Available for instant dispatch today',
-    '✓ Proximity: 2.1 km away in Pune',
-    '✓ High customer satisfaction (4.8+ ⭐)',
-    '✓ Fair Workload Match: Balanced allocation priority this week',
-    '✓ High Cooperative Trust Score (94/100)'
-  ];
+  const matchScore = provider.matchScore ?? 0;
+  const reasons = provider.reasons || [];
 
   const breakdown = provider.scoreBreakdown || {
-    skillScore: 100,
-    distanceScore: 88,
-    availabilityScore: 100,
-    ratingScore: 96,
-    workloadFairnessScore: 94,
-    trustScore: 94
+    skillScore: 0,
+    distanceScore: 0,
+    availabilityScore: 0,
+    ratingScore: 0,
+    workloadFairnessScore: 0,
+    trustScore: 0
   };
 
   return (
@@ -93,8 +86,8 @@ export const SmartMatchCard = ({ matchResult, onBook }) => {
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
               </div>
               <p className="text-xs font-bold text-emerald-800">{provider.skill}</p>
-              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" /> {provider.location} ({provider.distanceKm || '2.1'} km)
+                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                <MapPin className="w-3.5 h-3.5 text-slate-400" /> {provider.location} ({provider.distanceKm ?? 0} km)
               </p>
             </div>
           </div>
@@ -102,14 +95,14 @@ export const SmartMatchCard = ({ matchResult, onBook }) => {
           {/* Core Metrics Row */}
           <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-center text-xs">
             <div>
-              <span className="font-bold text-slate-800 flex items-center justify-center gap-1">
-                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> {provider.rating || '4.88'}
+                <span className="font-bold text-slate-800 flex items-center justify-center gap-1">
+                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> {provider.rating ?? 0}
               </span>
               <span className="text-[10px] text-slate-400">Rating</span>
             </div>
             <div className="border-x border-slate-200">
-              <span className="font-bold text-indigo-700 flex items-center justify-center gap-1">
-                <Award className="w-3.5 h-3.5" /> {provider.trustScore || '94'}
+                <span className="font-bold text-indigo-700 flex items-center justify-center gap-1">
+                <Award className="w-3.5 h-3.5" /> {provider.trustScore ?? 0}
               </span>
               <span className="text-[10px] text-slate-400">Trust Score</span>
             </div>
@@ -125,8 +118,8 @@ export const SmartMatchCard = ({ matchResult, onBook }) => {
           <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold uppercase text-emerald-800">Base Service Price</span>
-              <span className="text-lg font-black text-slate-900 block">Starting from ₹{provider.startingPrice || 400}</span>
-              <span className="text-[10px] text-slate-500 block">+ Travel fee ({provider.distanceKm || 3.2} km)</span>
+              <span className="text-lg font-black text-slate-900 block">Starting from ₹{provider.startingPrice ?? 0}</span>
+              <span className="text-[10px] text-slate-500 block">+ Travel fee ({provider.distanceKm ?? 0} km)</span>
             </div>
             <Badge variant="protected" size="sm">
               90% Worker Net

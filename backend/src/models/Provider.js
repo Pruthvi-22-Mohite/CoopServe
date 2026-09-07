@@ -10,7 +10,7 @@ const workHistorySchema = new mongoose.Schema({
   customer: { type: String, required: true },
   service: { type: String, required: true },
   date: { type: String, required: true },
-  rating: { type: Number, default: 5.0 },
+  rating: { type: Number, default: 0 },
   verified: { type: Boolean, default: true }
 }, { _id: false });
 
@@ -74,8 +74,8 @@ const providerSchema = new mongoose.Schema({
   },
   rating: {
     type: Number,
-    default: 5.0,
-    min: 1.0,
+    default: 0,
+    min: 0,
     max: 5.0,
     index: true
   },
@@ -96,7 +96,15 @@ const providerSchema = new mongoose.Schema({
   },
   distanceKm: {
     type: Number,
-    default: 3.0
+    default: null
+  },
+  latitude: {
+    type: Number,
+    default: null
+  },
+  longitude: {
+    type: Number,
+    default: null
   },
   location: {
     type: String,
@@ -130,6 +138,16 @@ const providerSchema = new mongoose.Schema({
   coopMemberId: {
     type: String,
     index: true
+  },
+  workerId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true
+  },
+  vehicleAvailable: {
+    type: Boolean,
+    default: false
   },
   bio: {
     type: String,

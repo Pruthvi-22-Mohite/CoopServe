@@ -6,6 +6,10 @@ const pricingBreakdownSchema = new mongoose.Schema({
   travelFee: { type: Number, default: 0 },
   extraCharges: { type: Number, default: 0 },
   customerTotal: { type: Number, required: true },
+  upfrontPayable: { type: Number },
+  remainingPayable: { type: Number },
+  cancellationDeduction: { type: Number, default: 0 },
+  refundAmount: { type: Number, default: 0 },
   customerPayment: { type: Number },
   platformFee: { type: Number, default: 0 },
   platformOperations: { type: Number },
@@ -86,8 +90,13 @@ const bookingSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    default: 'Flat 402, Green Meadows, Kothrud, Pune - 411038'
+    default: ''
   },
+  serviceState: { type: String, default: '' },
+  serviceCity: { type: String, default: '' },
+  serviceArea: { type: String, default: '' },
+  serviceLatitude: { type: Number, default: null },
+  serviceLongitude: { type: Number, default: null },
   notes: {
     type: String,
     default: ''
@@ -203,6 +212,20 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  cancellationDeduction: {
+    type: Number,
+    default: 0
+  },
+  refundAmount: {
+    type: Number,
+    default: 0
+  },
+  upfrontPayable: {
+    type: Number
+  },
+  remainingPayable: {
+    type: Number
+  },
   cancelledAt: {
     type: String
   },
@@ -246,6 +269,18 @@ bookingSchema.set('toJSON', {
     return ret;
   }
 });
+
+bookingSchema.index(
+  { providerId: 1, date: 1, time: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: {
+        $in: ['BOOKED', 'ACCEPTED', 'PROVIDER_ACCEPTED', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS']
+      }
+    }
+  }
+);
 
 bookingSchema.set('toObject', {
   virtuals: true,

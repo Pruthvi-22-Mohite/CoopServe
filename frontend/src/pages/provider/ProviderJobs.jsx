@@ -224,7 +224,7 @@ export const ProviderJobs = () => {
                 <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0">
                   <div className="text-left lg:text-right">
                     <span className="text-[10px] text-slate-400 uppercase font-bold block">Your Net Payout (90%)</span>
-                    <span className="text-lg font-black text-emerald-800">₹{job.pricing?.workerEarnings || 440}</span>
+                    <span className="text-lg font-black text-emerald-800">₹{job.pricing?.workerEarnings ?? 0}</span>
                     <span className="text-[10px] text-slate-500 block">Customer Paid: ₹{job.pricing?.customerPayment || 500}</span>
                   </div>
 

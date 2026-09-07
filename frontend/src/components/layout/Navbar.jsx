@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { useAccessibility } from '../../context/AccessibilityContext';
 import { Avatar } from '../common/Avatar';
 import { Badge } from '../common/Badge';
 import {
@@ -15,14 +14,12 @@ import {
   X,
   ExternalLink,
   ChevronDown,
-  Globe,
-  Glasses
+  Globe
 } from 'lucide-react';
 
 export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
   const { user, logout } = useAuth();
   const { language, setLanguage, availableLanguages, t } = useLanguage();
-  const { isElderlyMode, toggleAccessibilityMode } = useAccessibility();
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -30,12 +27,12 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'SERVICE_PROVIDER':
-        return <Badge variant="coop" size="sm">Worker / Provider</Badge>;
+        return <Badge variant="coop" size="sm">{t('role_worker_provider')}</Badge>;
       case 'ADMIN':
-        return <Badge variant="danger" size="sm">Admin Portal</Badge>;
+        return <Badge variant="danger" size="sm">{t('role_admin_portal')}</Badge>;
       case 'CUSTOMER':
       default:
-        return <Badge variant="protected" size="sm">Customer</Badge>;
+        return <Badge variant="protected" size="sm">{t('role_customer')}</Badge>;
     }
   };
 
@@ -73,11 +70,11 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
                 <div className="flex items-center gap-1.5">
                   <span className="font-extrabold text-xl text-slate-900 tracking-tight">Coop<span className="text-emerald-600">Serve</span></span>
                   <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md">
-                    Co-op
+                    {t('brand_coop_label')}
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-500 font-medium hidden sm:inline -mt-0.5">
-                  Fair Cooperative Gig Platform
+                  {t('brand_tagline')}
                 </span>
               </div>
             </Link>
@@ -90,7 +87,7 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span className="text-xs font-medium text-slate-600">
-              Active Cooperative Pros: <strong className="text-emerald-700">128 Certified</strong>
+              {t('nav_active_pros')}: <strong className="text-emerald-700">{t('nav_certified_count')}</strong>
             </span>
             <span className="text-slate-300">|</span>
             <Link to="/cooperative" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
@@ -100,21 +97,7 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
 
           {/* Right User Actions & Language Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Elderly EZ Mode Accessibility Toggle */}
-            <button
-              onClick={toggleAccessibilityMode}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-                isElderlyMode
-                  ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
-                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-              }`}
-              title={isElderlyMode ? "Disable Elderly EZ Mode" : "Enable Elderly EZ Mode (Larger fonts & buttons)"}
-            >
-              <Glasses className={`w-3.5 h-3.5 ${isElderlyMode ? 'text-amber-700' : 'text-emerald-600'}`} />
-              <span className="hidden sm:inline">{isElderlyMode ? 'EZ Mode ON' : 'EZ Mode'}</span>
-            </button>
-
-            {/* Language Switcher Selector */}
+          {/* Language Switcher Selector */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -122,7 +105,7 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
                   setShowProfileMenu(false);
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors"
-                title="Change language"
+                title={t('nav_change_language')}
               >
                 <Globe className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{currentLangObj.label}</span>
@@ -197,9 +180,9 @@ export const Navbar = ({ toggleSidebar, isSidebarOpen }) => {
                   {showProfileMenu && (
                     <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-4 py-2.5 border-b border-slate-100">
-                        <p className="text-xs text-slate-400 font-medium">Signed in as</p>
+                        <p className="text-xs text-slate-400 font-medium">{t('profile_signed_in_as')}</p>
                         <p className="text-xs font-bold text-slate-800 truncate">{user.email}</p>
-                        <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">{user.location || 'Pune, MH'}</p>
+                        <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">{user.location || t('profile_location_unset')}</p>
                       </div>
 
                       <div className="py-1">

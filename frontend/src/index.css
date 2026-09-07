@@ -32,36 +32,3 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Elderly EZ Mode Platform-wide Accessibility Overrides */
-html[data-a11y="elderly"] {
-  font-size: 18px;
-}
-
-html[data-a11y="elderly"] button,
-html[data-a11y="elderly"] input,
-html[data-a11y="elderly"] select,
-html[data-a11y="elderly"] textarea {
-  min-height: 48px;
-  font-size: 1rem;
-}
-
-html[data-a11y="elderly"] label {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-html[data-a11y="elderly"] .text-slate-400,
-html[data-a11y="elderly"] .text-slate-500 {
-  color: #334155 !important;
-}
-
-html[data-a11y="elderly"] .text-xs {
-  font-size: 0.85rem !important;
-  line-height: 1.25rem !important;
-}
-
-html[data-a11y="elderly"] .text-\[10px\],
-html[data-a11y="elderly"] .text-\[11px\] {
-  font-size: 0.8rem !important;
-}

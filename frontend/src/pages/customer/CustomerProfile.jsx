@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -25,6 +26,7 @@ import {
 export const CustomerProfile = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
 
   const [profile, setProfile] = useState(null);
   const [formData, setFormData] = useState({ name: '', phone: '', location: '' });
@@ -70,15 +72,15 @@ export const CustomerProfile = () => {
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading your profile and reward wallet..." />;
+    return <LoadingState message={t('profile_loading')} />;
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Customer Profile & Rewards"
-        description="Manage your verified account settings, saved household service addresses, and cooperative community benefits."
-        breadcrumbs={['Home', 'Profile']}
+        title={t('profile_customer_title')}
+        description={t('profile_customer_description')}
+        breadcrumbs={[t('nav_home'), t('nav_profile')]}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -97,7 +99,7 @@ export const CustomerProfile = () => {
               <p className="text-xs text-slate-500">{profile?.email}</p>
               <div className="mt-2">
                 <Badge variant="coop" size="sm">
-                  {profile?.rewards?.tier || 'Silver Co-op Member'}
+                  {profile?.rewards?.tier || t('profile_default_tier')}
                 </Badge>
               </div>
             </div>
@@ -107,26 +109,26 @@ export const CustomerProfile = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Gift className="w-5 h-5 text-amber-600" />
-                  <span className="text-xs font-bold text-amber-900">Cooperative Points</span>
+                  <span className="text-xs font-bold text-amber-900">{t('profile_points')}</span>
                 </div>
                 <span className="text-base font-black text-amber-800">
-                  {profile?.rewards?.points || 450} Pts
+                  {profile?.rewards?.points ?? 0} Pts
                 </span>
               </div>
-              <p className="text-[11px] text-amber-800/80 leading-relaxed">
-                Earned from verified bookings. Redeemable for ₹45 off any future service.
+                <p className="text-[11px] text-amber-800/80 leading-relaxed">
+                {t('profile_points_description')} {t('profile_points_rule')}
               </p>
             </div>
           </Card>
 
           {/* Saved Addresses Preview */}
           <Card className="p-5 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Saved Addresses</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">{t('profile_saved_addresses')}</h4>
             {profile?.savedAddresses?.map((addr) => (
               <div key={addr.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
                 <div className="flex items-center justify-between font-bold text-slate-800 mb-1">
                   <span>{addr.label}</span>
-                  {addr.isDefault && <Badge variant="success" size="sm">Default</Badge>}
+                  {addr.isDefault && <Badge variant="success" size="sm">{t('common_default')}</Badge>}
                 </div>
                 <p className="text-slate-600 leading-relaxed">{addr.address}</p>
               </div>
@@ -138,12 +140,12 @@ export const CustomerProfile = () => {
         <div className="lg:col-span-8">
           <Card className="p-6">
             <h3 className="text-base font-bold text-slate-900 pb-4 mb-5 border-b border-slate-100">
-              Account Information
+              {t('profile_account_information')}
             </h3>
 
             <form onSubmit={handleSave} className="space-y-4">
               <Input
-                label="Full Name"
+                label={t('auth_full_name')}
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -153,16 +155,16 @@ export const CustomerProfile = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
-                  label="Email Address"
+                  label={t('auth_email')}
                   type="email"
                   value={profile?.email}
                   disabled
                   leftIcon={<Mail className="w-4 h-4" />}
-                  helperText="Email cannot be modified in demo mode"
+                  helperText={t('profile_email_locked')}
                 />
 
                 <Input
-                  label="Phone Number"
+                  label={t('profile_phone')}
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -172,7 +174,7 @@ export const CustomerProfile = () => {
               </div>
 
               <Input
-                label="Default City / Location"
+                label={t('profile_default_location')}
                 type="text"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -187,7 +189,7 @@ export const CustomerProfile = () => {
                   isLoading={isSaving}
                   leftIcon={<Save className="w-4 h-4" />}
                 >
-                  Save Profile Changes
+                  {t('profile_save_changes')}
                 </Button>
               </div>
             </form>

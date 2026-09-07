@@ -6,7 +6,7 @@ import { calculateBookingPrice, CATEGORY_BASE_PRICES } from '../utils/pricingCal
 import { isUserAuthorizedForBooking } from '../middleware/authMiddleware.js';
 import { matchProviders } from '../services/matchingEngine.js';
 import User from '../models/User.js';
-import { verifyLocationAgainstCustomer } from '../utils/geolocation.js';
+import { geocodePlace, haversineDistanceMeters, verifyLocationAgainstCustomer } from '../utils/geolocation.js';
 
 const resolveCustomerCoords = async (booking) => {
   if (!booking?.customerId) {
@@ -108,7 +108,14 @@ export const createBooking = async (req, res) => {
       travelFee,
       extraCharges,
       pricing,
-      paymentMethod
+      paymentMethod,
+      serviceState,
+      serviceCity,
+      serviceArea,
+      serviceLatitude,
+      serviceLongitude,
+      latitude,
+      longitude
     } = req.body;
 
     if (!providerId) {
@@ -124,6 +131,18 @@ export const createBooking = async (req, res) => {
       : { id: providerId };
 
     const provider = await Provider.findOne(providerQuery);
+
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Selected provider was not found.' });
+    }
+
+    if (provider.status === 'Suspended' || provider.isAvailable === false || provider.availabilityStatus === 'Off Duty') {
+      return res.status(409).json({
+        success: false,
+        error: 'PROVIDER_UNAVAILABLE',
+        message: 'This provider is currently off duty or unavailable. Please choose another provider.'
+      });
+    }
 
     // Task 3: Provider Slot-Clash / Double-Booking Prevention
     const providerIdentities = [providerId];
@@ -141,6 +160,18 @@ export const createBooking = async (req, res) => {
 
     const requestedDate = date || new Date().toISOString().split('T')[0];
     const requestedTime = time || '11:00 AM';
+
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrowDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    if (provider.availabilityStatus === 'Available Tomorrow' && requestedDate !== tomorrowDate) {
+      return res.status(409).json({
+        success: false,
+        error: 'PROVIDER_SLOT_UNAVAILABLE',
+        message: requestedDate === today
+          ? 'This provider is available tomorrow, not today. Please choose a tomorrow slot or another provider.'
+          : 'This provider is not available on the selected date. Please choose another provider.'
+      });
+    }
 
     const activeBookingStatuses = [
       'BOOKED',
@@ -224,9 +255,39 @@ export const createBooking = async (req, res) => {
       400
     )));
 
-    const resolvedDistanceKm = distanceKm !== undefined
-      ? Number(distanceKm)
-      : (provider?.distanceKm !== undefined ? Number(provider.distanceKm) : 3.2);
+    const requestedLatitude = serviceLatitude ?? latitude;
+    const requestedLongitude = serviceLongitude ?? longitude;
+    let customerLatitude = Number(requestedLatitude);
+    let customerLongitude = Number(requestedLongitude);
+    if (!Number.isFinite(customerLatitude) || !Number.isFinite(customerLongitude)) {
+      const customerQuery = mongoose.isValidObjectId(customer.id)
+        ? { $or: [{ _id: customer.id }, { id: customer.id }] }
+        : { id: customer.id };
+      const savedCustomer = await User.findOne(customerQuery).lean();
+      customerLatitude = Number(savedCustomer?.lat);
+      customerLongitude = Number(savedCustomer?.lng);
+    }
+
+    let providerLatitude = Number(provider?.latitude);
+    let providerLongitude = Number(provider?.longitude);
+    if (!Number.isFinite(providerLatitude) || !Number.isFinite(providerLongitude)) {
+      const providerCoordinates = await geocodePlace(provider?.location || provider?.serviceAreas?.[0]);
+      providerLatitude = Number(providerCoordinates?.latitude);
+      providerLongitude = Number(providerCoordinates?.longitude);
+    }
+    if (!Number.isFinite(customerLatitude) || !Number.isFinite(customerLongitude) || !Number.isFinite(providerLatitude) || !Number.isFinite(providerLongitude)) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid service location is required before booking. Use your saved location or select a location with an area.'
+      });
+    }
+
+    const resolvedDistanceKm = haversineDistanceMeters(
+      customerLatitude,
+      customerLongitude,
+      providerLatitude,
+      providerLongitude
+    ) / 1000;
 
     const resolvedExtraCharges = Math.max(0, Math.round(Number(extraCharges || 0)));
 
@@ -240,6 +301,15 @@ export const createBooking = async (req, res) => {
     const randomNum = Math.floor(10000 + Math.random() * 90000);
     const bookingId = `CS-2026-${randomNum}`;
     const txnId = `CS-TXN-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const resolvedServiceArea = (serviceArea || '').trim();
+    const resolvedAddress = [serviceState, serviceCity, resolvedServiceArea].filter(Boolean).join(', ') || (address || '').trim();
+    if (!resolvedAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid service address.'
+      });
+    }
 
     const bookingPayload = {
       id: bookingId,
@@ -257,9 +327,16 @@ export const createBooking = async (req, res) => {
       category: category || provider?.categories?.[0] || 'general',
       date: requestedDate,
       time: requestedTime,
-      address: address || 'Flat 402, Green Meadows, Kothrud, Pune - 411038',
+      address: resolvedAddress,
+      serviceState: (serviceState || '').trim(),
+      serviceCity: (serviceCity || '').trim(),
+      serviceArea: resolvedServiceArea,
+      serviceLatitude: customerLatitude,
+      serviceLongitude: customerLongitude,
       notes: notes || '',
       price: calculatedPricing.customerTotal,
+      upfrontPayable: calculatedPricing.upfrontPayable,
+      remainingPayable: calculatedPricing.remainingPayable,
       basePrice: calculatedPricing.basePrice,
       distanceKm: calculatedPricing.distanceKm,
       travelFee: calculatedPricing.travelFee,
@@ -276,7 +353,19 @@ export const createBooking = async (req, res) => {
     };
 
     // Save persistent booking to MongoDB
-    const newBooking = await Booking.create(bookingPayload);
+    let newBooking;
+    try {
+      newBooking = await Booking.create(bookingPayload);
+    } catch (createErr) {
+      if (createErr?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          error: 'PROVIDER_SLOT_CONFLICT',
+          message: 'The selected provider slot was just booked. Please choose another time slot.'
+        });
+      }
+      throw createErr;
+    }
 
     // Persist notifications to MongoDB
     try {
@@ -432,6 +521,23 @@ export const updateBookingStatus = async (req, res) => {
         });
         await mongoProvider.save();
       }
+
+      // Credit reward points to customer: 1 point per ₹10 spent (Requirement 5)
+      try {
+        const earnedPoints = Math.max(1, Math.floor((booking.price || 400) / 10));
+        const customerUser = await User.findOne({
+          $or: [
+            { id: booking.customerId },
+            ...(mongoose.isValidObjectId(booking.customerId) ? [{ _id: booking.customerId }] : [])
+          ]
+        });
+        if (customerUser) {
+          customerUser.rewardsPoints = (customerUser.rewardsPoints || 0) + earnedPoints;
+          await customerUser.save();
+        }
+      } catch (ptsErr) {
+        console.warn('[Reward Points Calculation Error]', ptsErr.message);
+      }
     } else if (normalizedStatus === 'REJECTED') {
       notificationTitle = 'Pro Unavailable - Auto Reassigning';
       notificationMessage = `Provider was unavailable. CoopServe AI is finding the next best balanced match for you.`;
@@ -533,9 +639,39 @@ export const cancelBooking = async (req, res) => {
       });
     }
 
+    const cancellableStatuses = [
+      'BOOKED',
+      'ACCEPTED',
+      'PROVIDER_ACCEPTED'
+    ];
+    if (!cancellableStatuses.includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This booking can no longer be cancelled.'
+      });
+    }
+
+    // The charge is 10% of the 25% upfront payment; the remaining 15% is refunded.
+    const totalAmount = booking.pricing?.customerTotal || booking.price || 0;
+    const upfrontPaid = booking.pricing?.upfrontPayable !== undefined
+      ? booking.pricing.upfrontPayable
+      : Math.round(totalAmount * 0.25);
+    const cancellationPenalty = Math.round(upfrontPaid * 0.10);
+    const refundAmount = Math.max(0, upfrontPaid - cancellationPenalty);
+
     booking.status = 'CANCELLED';
     booking.cancellationReason = reason || 'Customer requested cancellation';
+    booking.cancellationDeduction = cancellationPenalty;
+    booking.refundAmount = refundAmount;
+    if (booking.paymentStatus === 'PAID') {
+      booking.paymentStatus = 'REFUNDED';
+    }
     booking.cancelledAt = new Date().toISOString();
+
+    if (booking.pricing) {
+      booking.pricing.cancellationDeduction = cancellationPenalty;
+      booking.pricing.refundAmount = refundAmount;
+    }
 
     await booking.save();
 
@@ -553,7 +689,12 @@ export const cancelBooking = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Booking cancelled. Note: Cancellation removes CoopServe Protection guarantee for this job.',
+      message: `10% cancellation charges will be deducted. (Deduction: ₹${cancellationPenalty} | Refund: ₹${refundAmount})`,
+      notice: '10% cancellation charges will be deducted.',
+      cancellationDeduction: cancellationPenalty,
+      refundAmount: refundAmount,
+      totalAmount: totalAmount,
+      upfrontPaid: upfrontPaid,
       booking
     });
   } catch (err) {

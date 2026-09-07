@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { FilterPanel } from '../../components/customer/FilterPanel';
@@ -14,6 +15,7 @@ import { Users, Search, Sparkles, Cpu } from 'lucide-react';
 
 export const ProvidersDirectory = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -57,6 +59,9 @@ export const ProvidersDirectory = () => {
           minRating: minRating || undefined,
           maxPrice: maxPrice < 1500 ? maxPrice : undefined,
           availableToday: availableTodayOnly ? 'true' : undefined,
+          latitude: user?.lat,
+          longitude: user?.lng,
+          location: [user?.neighbourhood, user?.city, user?.state].filter(Boolean).join(', ') || undefined,
           sortBy
         };
 
@@ -74,7 +79,7 @@ export const ProvidersDirectory = () => {
     };
 
     fetchFilteredProviders();
-  }, [selectedCategory, searchQuery, minRating, maxPrice, availableTodayOnly, sortBy]);
+  }, [selectedCategory, searchQuery, minRating, maxPrice, availableTodayOnly, sortBy, user?.lat, user?.lng]);
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -89,12 +94,12 @@ export const ProvidersDirectory = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Verified Cooperative Service Providers"
-        description="Connect directly with verified local professionals in Pune. Transparent hourly/fixed rates, verified work history records, and 100% Protected Booking."
-        breadcrumbs={['Home', 'Providers']}
+        title={t('providers_title')}
+        description={t('common_guarantee')}
+        breadcrumbs={[t('nav_home'), t('nav_providers')]}
         badge={
           <Badge variant="coop" size="sm">
-            {providers.length} Available
+            {providers.length} {t('providers_available')}
           </Badge>
         }
       />
@@ -123,10 +128,10 @@ export const ProvidersDirectory = () => {
           <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
             <span className="flex items-center gap-1.5 text-emerald-800">
               <Cpu className="w-4 h-4 text-emerald-600" />
-              AI Smart Recommendation Spotlight
+              {t('providers_ai_spotlight')}
             </span>
             <span className="text-slate-400 font-normal">
-              Based on skill, proximity, Trust Score & fair workload
+              {t('providers_ai_basis')}
             </span>
           </div>
           <SmartMatchCard
@@ -146,20 +151,20 @@ export const ProvidersDirectory = () => {
         </span>
         {selectedCategory !== 'all' && (
           <span className="bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-md font-semibold">
-            Filtered by {selectedCategory}
+            {t('providers_filtered_by')} {selectedCategory}
           </span>
         )}
       </div>
 
       {/* Providers Grid / Loading / Empty */}
       {isLoading ? (
-        <LoadingState message="Searching verified providers..." />
+        <LoadingState message={t('providers_loading')} />
       ) : providers.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No providers match your filter criteria"
-          description="Try broadening your search query, increasing max price, or selecting all categories."
-          actionLabel="Reset All Filters"
+          title={t('providers_empty_title')}
+          description={t('providers_empty_description')}
+          actionLabel={t('filter_reset_all')}
           onAction={handleResetFilters}
         />
       ) : (

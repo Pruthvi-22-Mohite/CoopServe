@@ -68,9 +68,9 @@ export const ProviderDetail = () => {
   if (!provider) {
     return (
       <div className="text-center py-16">
-        <h3 className="text-lg font-bold text-slate-800">Provider record not found</h3>
+        <h3 className="text-lg font-bold text-slate-800">{t('provider_profile_not_found')}</h3>
         <Button variant="primary" className="mt-4" onClick={() => navigate('/customer/providers')}>
-          Back to Providers
+          {t('providers_back')}
         </Button>
       </div>
     );
@@ -80,12 +80,12 @@ export const ProviderDetail = () => {
     <div className="space-y-6">
       <PageHeader
         title={provider.name}
-        description={`Verified Cooperative Service Partner • Member ID: ${provider.coopMemberId || 'COOP-MH-2025-089'}`}
-        breadcrumbs={['Home', 'Providers', provider.name]}
+        description={`${t('provider_verified_partner')} • ${t('provider_member_id')}: ${provider.coopMemberId || ''}`}
+        breadcrumbs={[t('nav_home'), t('nav_providers'), provider.name]}
         badge={
           <Badge variant="success" size="sm">
             <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-            Verified Pro
+            {t('provider_verified_pro')}
           </Badge>
         }
       />
@@ -108,7 +108,7 @@ export const ProviderDetail = () => {
                   {provider.coopMemberId}
                 </Badge>
                 <Badge variant="protected" size="sm">
-                  90% Worker Net
+                  {t('provider_worker_net')}
                 </Badge>
               </div>
 
@@ -136,13 +136,13 @@ export const ProviderDetail = () => {
             </div>
             <div>
               <p className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                CoopServe Trust Score
+                {t('provider_trust_score')}
               </p>
               <p className="text-[11px] text-indigo-700 mt-0.5">
-                Top 5% verified reliability tier in Pune
+                {t('provider_trust_description')}
               </p>
               <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 mt-1">
-                ✓ 100% on-time record
+                ✓ {t('provider_on_time_record')}
               </span>
             </div>
           </div>
@@ -161,7 +161,7 @@ export const ProviderDetail = () => {
         {/* Service Areas Tags */}
         {provider.serviceAreas && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-semibold text-slate-500 mr-1">Service Hubs:</span>
+            <span className="text-xs font-semibold text-slate-500 mr-1">{t('provider_service_hubs')}:</span>
             {provider.serviceAreas.map((area, idx) => (
               <span key={idx} className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-lg font-medium">
                 {area}
@@ -214,11 +214,11 @@ export const ProviderDetail = () => {
             <Card className="rounded-t-none p-5 space-y-3">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Standard Service Rate Card</h3>
-                  <p className="text-xs text-slate-500">Fixed cooperative rate with zero hidden costs</p>
+                  <h3 className="text-sm font-bold text-slate-900">{t('provider_rate_card')}</h3>
+                  <p className="text-xs text-slate-500">{t('provider_rate_description')}</p>
                 </div>
                 <Badge variant="protected" size="sm">
-                  Protected Rate
+                  {t('provider_protected_rate')}
                 </Badge>
               </div>
 
@@ -253,11 +253,11 @@ export const ProviderDetail = () => {
             <Card className="rounded-t-none p-5 space-y-3">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Verified Platform Work Record</h3>
-                  <p className="text-xs text-slate-500">Every job is recorded to prevent platform leakage and maintain portable worker credit</p>
+                  <h3 className="text-sm font-bold text-slate-900">{t('provider_work_record')}</h3>
+                  <p className="text-xs text-slate-500">{t('provider_work_record_description')}</p>
                 </div>
                 <Badge variant="coop" size="sm">
-                  100% Verified
+                  {t('provider_verified')}
                 </Badge>
               </div>
 
@@ -267,10 +267,10 @@ export const ProviderDetail = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-800">{item.service}</span>
-                        <Badge variant="success" size="sm">✓ Verified Job</Badge>
+                        <Badge variant="success" size="sm">✓ {t('provider_verified_job')}</Badge>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Customer: {item.customer} • Date: {item.date} • ID: {item.id}
+                        {t('common_customer')}: {item.customer} • {t('common_date')}: {item.date} • {t('common_id')}: {item.id}
                       </p>
                     </div>
                     <div className="text-right">
