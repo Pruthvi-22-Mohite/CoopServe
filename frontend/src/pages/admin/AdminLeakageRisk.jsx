@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatCard } from '../../components/common/StatCard';
 import { Card } from '../../components/common/Card';
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 export const AdminLeakageRisk = () => {
+  const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,25 +42,25 @@ export const AdminLeakageRisk = () => {
   }, []);
 
   if (isLoading) {
-    return <LoadingState message="Analyzing platform pattern telemetry and retention signals..." />;
+    return <LoadingState message={t('admin_leakage_loading')} />;
   }
 
   const {
-    totalBookings = 4894,
-    totalCancellations = 118,
-    cancellationRate = '2.4%',
-    customerCancellations = 78,
-    providerCancellations = 40,
-    cancellationAfterAssignment = 32,
+    totalBookings = 0,
+    totalCancellations = 0,
+    cancellationRate = '0%',
+    customerCancellations = 0,
+    providerCancellations = 0,
+    cancellationAfterAssignment = 0,
     visibleRiskSignals = [],
-    retentionPolicy = 'Value-First Anti-Leakage (Portable worker credits + 30-day warranty guarantee)'
+    retentionPolicy = ''
   } = data || {};
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cancellation Patterns & Platform Retention Telemetry"
-        description="Monitor internal on-platform booking cancellation trends and deploy value-first cooperative incentives to maintain service recording."
+        title={t('admin_leakage_title')}
+        description={t('admin_leakage_desc')}
         breadcrumbs={['Home', 'Admin', 'Cancellation & Leakage']}
         badge={
           <Badge variant="warning" size="sm">

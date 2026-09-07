@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 
 export const AdminMatchingInspector = () => {
+  const { t } = useLanguage();
   const [matchingData, setMatchingData] = useState(null);
   const [selectedTrade, setSelectedTrade] = useState('plumbing');
   const [simulatedMatch, setSimulatedMatch] = useState(null);
@@ -58,7 +60,7 @@ export const AdminMatchingInspector = () => {
   }, []);
 
   if (isLoading) {
-    return <LoadingState message="Connecting to AI dispatch telemetry & weighting matrix..." />;
+    return <LoadingState message={t('admin_matching_loading')} />;
   }
 
   const { activeDispatches = [], weights = {} } = matchingData || {};
@@ -66,8 +68,8 @@ export const AdminMatchingInspector = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Multi-Factor Matching Inspector"
-        description="Audit algorithmic weights, explainability factors, and cooperative workload balancing metrics for transparent dispatch."
+        title={t('admin_matching_title')}
+        description={t('admin_matching_desc')}
         breadcrumbs={['Home', 'Admin', 'AI Matching']}
         badge={
           <Badge variant="success" size="sm">

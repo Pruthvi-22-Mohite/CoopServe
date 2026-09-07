@@ -1,3 +1,12 @@
+import dns from 'node:dns';
+
+// Fix DNS SRV query lookup failures on Windows / local ISP networks for MongoDB Atlas
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (dnsErr) {
+  console.warn('[DNS] Custom DNS setup notice:', dnsErr.message);
+}
+
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Provider from '../models/Provider.js';
@@ -14,7 +23,8 @@ export const connectDB = async () => {
 
   try {
     const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 5000,
+      family: 4
     });
     console.log(`MongoDB connected successfully: ${conn.connection.host}`);
 

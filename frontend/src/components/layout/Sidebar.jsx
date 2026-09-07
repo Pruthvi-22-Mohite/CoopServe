@@ -37,15 +37,15 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
   ];
 
   const providerLinks = [
-    { to: '/provider/dashboard', label: 'Worker Dashboard', icon: LayoutDashboard },
-    { to: '/provider/jobs', label: 'Assigned Jobs', icon: Briefcase },
-    { to: '/provider/earnings', label: 'Net Earnings (90%)', icon: IndianRupee },
-    { to: '/provider/availability', label: 'Duty & Localities', icon: Clock },
-    { to: '/provider/history', label: 'Verified Work Record', icon: Award },
-    { to: '/provider/reviews', label: 'Ratings & Reviews', icon: Star },
-    { to: '/provider/cooperative', label: 'Cooperative Safety Net', icon: Sparkles, highlight: true },
-    { to: '/provider/notifications', label: 'Dispatch Alerts', icon: Bell },
-    { to: '/provider/profile', label: 'My Profile', icon: User }
+    { to: '/provider/dashboard', label: t('worker_menu_dashboard', 'Worker Dashboard'), icon: LayoutDashboard },
+    { to: '/provider/jobs', label: t('worker_menu_jobs', 'Assigned Jobs'), icon: Briefcase },
+    { to: '/provider/earnings', label: t('worker_menu_earnings', 'Net Earnings (90%)'), icon: IndianRupee },
+    { to: '/provider/availability', label: t('worker_menu_availability', 'Duty & Localities'), icon: Clock },
+    { to: '/provider/history', label: t('worker_menu_history', 'Verified Work Record'), icon: Award },
+    { to: '/provider/reviews', label: t('worker_menu_reviews', 'Ratings & Reviews'), icon: Star },
+    { to: '/provider/cooperative', label: t('worker_menu_cooperative', 'Cooperative Safety Net'), icon: Sparkles, highlight: true },
+    { to: '/provider/notifications', label: t('worker_menu_notifications', 'Dispatch Alerts'), icon: Bell },
+    { to: '/provider/profile', label: t('worker_menu_profile', 'My Profile'), icon: User }
   ];
 
   const adminLinks = [

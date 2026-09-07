@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { subscribeToBookingUpdates } from '../../services/socket';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatCard } from '../../components/common/StatCard';
 import { Card } from '../../components/common/Card';
@@ -36,6 +38,7 @@ import {
 export const ProviderDashboard = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState(null);
@@ -52,7 +55,7 @@ export const ProviderDashboard = () => {
       ]);
 
       if (statsRes.success) setStats(statsRes.stats);
-      if (bookingsRes.success) setBookings(bookingsRes.bookings);
+      if (bookingsRes.success) setBookings(bookingsRes.bookings || []);
     } catch (err) {
       console.error('Error loading provider dashboard:', err);
     } finally {
@@ -62,6 +65,20 @@ export const ProviderDashboard = () => {
 
   useEffect(() => {
     fetchDashboard();
+
+    // Task 2: Real-time Socket.IO listener for live job requests and status updates
+    const unsubscribe = subscribeToBookingUpdates(
+      () => {
+        fetchDashboard();
+      },
+      () => {
+        fetchDashboard();
+      }
+    );
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const handleUpdateStatus = async (bookingId, newStatus) => {
@@ -69,25 +86,27 @@ export const ProviderDashboard = () => {
     try {
       const res = await api.updateBookingStatus(bookingId, newStatus);
       if (res.success) {
-        showToast(`Job status updated to ${newStatus.replace('_', ' ')}!`, 'success');
+        showToast(t('worker_job_status_updated', 'Job status updated successfully!'), 'success');
         await fetchDashboard();
       }
     } catch (err) {
-      showToast(err.message || 'Failed to update job status', 'error');
+      showToast(err.message || t('worker_job_status_failed', 'Failed to update job status'), 'error');
     } finally {
       setUpdatingId(null);
     }
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading worker dashboard & job dispatches..." />;
+    return <LoadingState message={t('worker_loading_dashboard', 'Loading worker dashboard & job dispatches...')} />;
   }
 
   const pendingRequests = bookings.filter((b) => b.status === 'BOOKED');
   const activeJobs = bookings.filter((b) =>
     ['PROVIDER_ACCEPTED', 'ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS'].includes(b.status)
   );
-  const completedJobs = bookings.filter((b) => b.status === 'COMPLETED');
+  const completedJobs = bookings.filter(
+    (b) => b.status === 'COMPLETED' && !['FAILED', 'REFUNDED'].includes(b.paymentStatus)
+  );
 
   const providerInfo = stats?.provider || {};
 
@@ -96,7 +115,12 @@ export const ProviderDashboard = () => {
     todayEarnings: 0,
     monthlyEarnings: 0,
     rating: 0,
-    trustScore: 0
+    trustScore: 85
+  };
+
+  const rewards = stats?.rewards || {
+    points: 0,
+    tier: 'Associate Member (Bronze Tier)'
   };
 
   return (
@@ -108,29 +132,36 @@ export const ProviderDashboard = () => {
             src={providerInfo.avatar}
             name={providerInfo.name}
             size="xl"
-            isVerified={true}
+            isVerified={Boolean(providerInfo.isVerified)}
           />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">
-                COOP-MEMBER PORTAL
+                {t('worker_portal', 'COOP-MEMBER PORTAL')}
               </span>
-              <Badge variant={providerInfo.isAvailable ? 'success' : 'warning'} size="sm">{providerInfo.isAvailable ? 'Active On Duty' : 'Off Duty'}</Badge>
+              <Badge variant={providerInfo.isAvailable ? 'success' : 'warning'} size="sm">
+                {providerInfo.isAvailable ? t('worker_active_on_duty', 'Active On Duty') : t('worker_off_duty', 'Off Duty')}
+              </Badge>
             </div>
-            <h2 className="text-2xl font-black text-white mt-0.5">{providerInfo.name}</h2>
-            <p className="text-xs text-emerald-200">{providerInfo.skill} • ID: {providerInfo.workerId || providerInfo.id || '—'}</p>
+            <h2 className="text-2xl font-black text-white mt-0.5">{providerInfo.name || 'Coop Pro'}</h2>
+            <p className="text-xs text-emerald-200">
+              {providerInfo.skill || 'Technician'} • ID: {providerInfo.coopMemberId || providerInfo.workerId || providerInfo.id || '—'}
+              {providerInfo.rating > 0 ? ` • ${Number(providerInfo.rating).toFixed(2)} ⭐ (${providerInfo.reviewsCount || 0} reviews)` : ` • 0.0 ⭐ (${t('worker_no_reviews_title', 'No reviews yet')})`}
+            </p>
           </div>
         </div>
 
         {/* Trust Score & Cooperative Badge */}
         <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/10 shrink-0">
           <div className="w-12 h-12 rounded-xl bg-indigo-600 flex flex-col items-center justify-center font-black shadow-md">
-            <span className="text-base leading-none text-white">{metrics.trustScore}</span>
+            <span className="text-base leading-none text-white">{metrics.trustScore || 85}</span>
             <span className="text-[8px] text-indigo-200">/100</span>
           </div>
           <div>
-            <p className="text-xs font-bold text-white uppercase">CoopServe Trust Score</p>
-            <p className="text-[11px] text-emerald-300 font-medium">90% Direct Net Payout Active</p>
+            <p className="text-xs font-bold text-white uppercase">{t('worker_trust_score_title', 'CoopServe Trust Score')}</p>
+            <p className="text-[11px] text-emerald-300 font-medium">
+              {rewards.points} {t('worker_reward_pts_label', 'Reward Pts')} • {t('worker_net_payout_active', '90% Direct Net Payout Active')}
+            </p>
           </div>
         </div>
       </div>
@@ -138,31 +169,31 @@ export const ProviderDashboard = () => {
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Today's Jobs"
+          title={t('worker_stat_today_jobs', "Today's Jobs")}
           value={activeJobs.length + pendingRequests.length}
           icon={Briefcase}
-          trend={{ direction: 'up', text: `${pendingRequests.length} Pending requests` }}
+          trend={{ direction: 'up', text: `${pendingRequests.length} ${t('worker_stat_pending_requests', 'Pending requests')}` }}
           variant="primary"
         />
         <StatCard
-          title="Today's Net Earnings"
+          title={t('worker_stat_today_earnings', "Today's Net Earnings")}
           value={`₹${metrics.todayEarnings.toLocaleString()}`}
           icon={IndianRupee}
-          trend={{ direction: 'up', text: '90% direct worker split' }}
+          trend={{ direction: 'up', text: t('worker_stat_direct_split', '90% direct worker split') }}
           variant="success"
         />
         <StatCard
-          title="Monthly Income"
+          title={t('worker_stat_monthly_income', 'Monthly Income')}
           value={`₹${metrics.monthlyEarnings.toLocaleString()}`}
           icon={TrendingUp}
-          trend={{ direction: 'up', text: 'Zero hidden commission' }}
+          trend={{ direction: 'up', text: t('worker_stat_zero_comm', 'Zero hidden commission') }}
           variant="info"
         />
         <StatCard
-          title="Cooperative Standing"
-          value="Certified Pro"
-          icon={ShieldCheck}
-          trend={{ direction: 'up', text: 'Active Member in Good Standing' }}
+          title={t('worker_stat_coop_points', 'Co-op Reward Points')}
+          value={`${rewards.points} Pts`}
+          icon={Award}
+          trend={{ direction: 'up', text: `${completedJobs.length} ${t('worker_stat_completed_jobs_count', 'completed jobs')}` }}
           variant="warning"
         />
       </div>
@@ -172,14 +203,14 @@ export const ProviderDashboard = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
-            <span>Incoming Job Requests ({pendingRequests.length})</span>
+            <span>{t('worker_incoming_requests', 'Incoming Job Requests')} ({pendingRequests.length})</span>
           </h3>
-          <span className="text-xs text-slate-500">Live service dispatches in Pune</span>
+          <span className="text-xs text-slate-500">{t('worker_live_dispatches_pune', 'Live service dispatches in Pune')}</span>
         </div>
 
         {pendingRequests.length === 0 ? (
           <Card className="p-6 text-center text-xs text-slate-500 bg-slate-50 border-dashed">
-            No pending requests at this moment. You are ready for incoming dispatches!
+            {t('worker_no_pending_requests', 'No pending requests at this moment. You are ready for incoming dispatches!')}
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,33 +218,33 @@ export const ProviderDashboard = () => {
               <Card key={req.id} className="p-5 border-2 border-amber-400 bg-gradient-to-br from-amber-50/40 to-white space-y-3.5 shadow-md">
                 <div className="flex items-center justify-between pb-2 border-b border-amber-200/60">
                   <div className="flex items-center gap-2">
-                    <Badge variant="warning" size="sm">NEW REQUEST</Badge>
+                    <Badge variant="warning" size="sm">{t('worker_new_request', 'NEW REQUEST')}</Badge>
                     <span className="text-xs font-bold text-slate-400">ID: {req.id}</span>
                   </div>
                   <span className="text-sm font-black text-emerald-800">
-                    Net: ₹{req.pricing?.workerEarnings ?? 0}
+                    {t('worker_net_prefix', 'Net:')} ₹{req.pricing?.workerEarnings ?? 0}
                   </span>
                 </div>
 
                 <div>
                   <h4 className="font-extrabold text-base text-slate-900">{req.serviceTitle}</h4>
                   <p className="text-xs text-slate-600 font-medium mt-0.5">
-                    Customer: <strong className="text-slate-900">{req.customerName}</strong> • {req.customerPhone}
+                    {t('worker_customer_label', 'Customer:')} <strong className="text-slate-900">{req.customerName}</strong> • {req.customerPhone}
                   </p>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1 text-slate-600">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Slot: <strong>{req.date} at {req.time}</strong></span>
+                    <span>{t('worker_slot_label', 'Slot:')} <strong>{req.date} at {req.time}</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="line-clamp-1">Location: {req.address}</span>
+                    <span className="line-clamp-1">{t('worker_location_label', 'Location:')} {req.address}</span>
                   </div>
                   {req.notes && (
                     <div className="pt-1 text-[11px] text-slate-500 italic">
-                      Note: "{req.notes}"
+                      {t('worker_note_prefix', 'Note:')} "{req.notes}"
                     </div>
                   )}
                 </div>
@@ -221,26 +252,28 @@ export const ProviderDashboard = () => {
                 {/* Transparent Pre-Acceptance Earnings Breakdown */}
                 <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200 text-xs space-y-1.5">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
-                    <span>Transparent Earnings Breakdown</span>
-                    <span className="text-emerald-700 font-bold">100% Guaranteed</span>
+                    <span>{t('worker_transparent_breakdown', 'Transparent Earnings Breakdown')}</span>
+                    <span className="text-emerald-700 font-bold">{t('worker_guaranteed_100', '100% Guaranteed')}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Customer Payment:</span>
+                    <span>{t('worker_cust_payment', 'Customer Payment:')}</span>
                     <span className="font-semibold text-slate-900">₹{req.pricing?.customerTotal ?? req.price ?? 0}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Distance & Travel Fee ({req.pricing?.distanceKm ?? 0} km):</span>
+                    <span>{t('worker_travel_fee_row', 'Distance & Travel Fee')} ({req.pricing?.distanceKm ?? 0} km):</span>
                     <span className="font-semibold text-teal-800">+₹{req.pricing?.travelFee ?? 0}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Platform Operations Fee (10%):</span>
+                    <span>{t('worker_platform_ops_row', 'Platform Operations Fee (10%):')}</span>
                     <span className="font-semibold text-slate-700">-₹{req.pricing?.platformFee ?? req.pricing?.platformOperations ?? 0}</span>
                   </div>
                   <div className="pt-1.5 border-t border-slate-200 flex justify-between font-black text-xs">
-                    <span className="text-emerald-900">Your Expected Net Earnings:</span>
+                    <span className="text-emerald-900">{t('worker_expected_net_earnings', 'Your Expected Net Earnings:')}</span>
                     <span className="text-emerald-700 text-sm">₹{req.pricing?.workerEarnings ?? 0}</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 italic pt-0.5">Clear pricing before booking. Clear earnings before accepting.</p>
+                  <p className="text-[10px] text-slate-400 italic pt-0.5">
+                    {t('worker_pricing_clarity_note', 'Clear pricing before booking. Clear earnings before accepting.')}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between pt-1 gap-3">
@@ -251,7 +284,7 @@ export const ProviderDashboard = () => {
                     isLoading={updatingId === req.id}
                     onClick={() => handleUpdateStatus(req.id, 'REJECTED')}
                   >
-                    Decline
+                    {t('worker_decline', 'Decline')}
                   </Button>
                   <Button
                     variant="primary"
@@ -261,7 +294,7 @@ export const ProviderDashboard = () => {
                     onClick={() => handleUpdateStatus(req.id, 'PROVIDER_ACCEPTED')}
                     rightIcon={<CheckCircle2 className="w-4 h-4" />}
                   >
-                    Accept Job (₹{req.pricing?.workerEarnings ?? 0})
+                    {t('worker_accept_job', 'Accept Job')} (₹{req.pricing?.workerEarnings ?? 0})
                   </Button>
                 </div>
               </Card>
@@ -275,14 +308,14 @@ export const ProviderDashboard = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Truck className="w-5 h-5 text-emerald-600" />
-            <span>Active Dispatches & Ongoing Jobs ({activeJobs.length})</span>
+            <span>{t('worker_active_dispatches_title', 'Active Dispatches & Ongoing Jobs')} ({activeJobs.length})</span>
           </h3>
-          <span className="text-xs text-slate-500">Update status to notify customer in real-time</span>
+          <span className="text-xs text-slate-500">{t('worker_notify_customer_realtime', 'Update status to notify customer in real-time')}</span>
         </div>
 
         {activeJobs.length === 0 ? (
           <Card className="p-6 text-center text-xs text-slate-500 bg-slate-50">
-            No active jobs in progress right now. Accepted jobs will appear here.
+            {t('worker_no_active_jobs', 'No active jobs in progress right now. Accepted jobs will appear here.')}
           </Card>
         ) : (
           <div className="space-y-4">
@@ -296,7 +329,7 @@ export const ProviderDashboard = () => {
                         {job.status.replace('_', ' ')}
                       </Badge>
                       <Badge variant="coop" size="sm">
-                        90% Worker Net: ₹{job.pricing?.workerEarnings ?? 0}
+                        90% Net: ₹{job.pricing?.workerEarnings ?? 0}
                       </Badge>
                     </div>
 
@@ -304,7 +337,7 @@ export const ProviderDashboard = () => {
 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
                       <span className="flex items-center gap-1 font-semibold">
-                        Customer: {job.customerName} ({job.customerPhone})
+                        {t('worker_customer_label', 'Customer:')} {job.customerName} ({job.customerPhone})
                       </span>
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-slate-400" /> {job.address}
@@ -323,7 +356,7 @@ export const ProviderDashboard = () => {
                       onClick={() => setActiveChatBooking(job)}
                       leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
                     >
-                      Chat
+                      {t('worker_chat', 'Chat')}
                     </Button>
 
                     {job.status === 'PROVIDER_ACCEPTED' && (
@@ -334,7 +367,7 @@ export const ProviderDashboard = () => {
                         onClick={() => handleUpdateStatus(job.id, 'ON_THE_WAY')}
                         leftIcon={<Truck className="w-4 h-4" />}
                       >
-                        Mark On The Way
+                        {t('worker_mark_on_the_way', 'Mark On The Way')}
                       </Button>
                     )}
 
@@ -346,7 +379,7 @@ export const ProviderDashboard = () => {
                         onClick={() => handleUpdateStatus(job.id, 'ARRIVED')}
                         leftIcon={<MapPin className="w-4 h-4" />}
                       >
-                        Mark Arrived at Site
+                        {t('worker_mark_arrived', 'Mark Arrived at Site')}
                       </Button>
                     )}
 
@@ -358,7 +391,7 @@ export const ProviderDashboard = () => {
                         onClick={() => handleUpdateStatus(job.id, 'IN_PROGRESS')}
                         leftIcon={<PlayCircle className="w-4 h-4" />}
                       >
-                        Start Service
+                        {t('worker_start_service', 'Start Service')}
                       </Button>
                     )}
 
@@ -370,7 +403,7 @@ export const ProviderDashboard = () => {
                         onClick={() => handleUpdateStatus(job.id, 'COMPLETED')}
                         leftIcon={<CheckCircle2 className="w-4 h-4" />}
                       >
-                        Complete Service & Get Paid (₹{job.pricing?.workerEarnings ?? 0})
+                        {t('worker_complete_get_paid', 'Complete Service & Get Paid')} (₹{job.pricing?.workerEarnings ?? 0})
                       </Button>
                     )}
                   </div>
@@ -385,37 +418,43 @@ export const ProviderDashboard = () => {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900">
-            Recent Verified Work History ({completedJobs.length})
+            {t('worker_recent_history_title', 'Recent Verified Work History')} ({completedJobs.length})
           </h3>
           <button
             onClick={() => navigate('/provider/history')}
             className="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1"
           >
-            View Full Verified Record <ArrowRight className="w-3.5 h-3.5" />
+            {t('worker_view_full_record', 'View Full Verified Record')} <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {completedJobs.slice(0, 4).map((cJob) => (
-            <div key={cJob.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between text-xs">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-800">{cJob.serviceTitle}</span>
-                  <Badge variant="success" size="sm">✓ Verified</Badge>
+        {completedJobs.length === 0 ? (
+          <Card className="p-6 text-center text-xs text-slate-500 bg-slate-50">
+            {t('worker_no_completed_recent', 'No completed jobs recorded yet. Once you complete service orders, your verified history will appear here.')}
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {completedJobs.slice(0, 4).map((cJob) => (
+              <div key={cJob.id || cJob._id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between text-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-800">{cJob.serviceTitle}</span>
+                    <Badge variant="success" size="sm">{t('worker_verified_badge', '✓ Verified')}</Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {t('worker_customer_label', 'Customer:')} {cJob.customerName} • {cJob.date}
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Customer: {cJob.customerName} • {cJob.date}
-                </p>
+                <div className="text-right">
+                  <span className="font-black text-emerald-800 text-sm">
+                    +₹{cJob.pricing?.workerEarnings ?? 0}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">90% Net Payout</span>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="font-black text-emerald-800 text-sm">
-                  +₹{cJob.pricing?.workerEarnings ?? 0}
-                </span>
-                <span className="text-[10px] text-slate-400 block">90% Net Payout</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Live In-App Chat Modal */}

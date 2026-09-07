@@ -3,7 +3,8 @@ import {
   getProviderDashboardStats,
   getProviderEarnings,
   getProviderAvailability,
-  updateProviderAvailability
+  updateProviderAvailability,
+  updateProviderProfile
 } from '../controllers/providerStatsController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 
@@ -13,5 +14,6 @@ router.get('/stats', authenticate, getProviderDashboardStats);
 router.get('/earnings', authenticate, getProviderEarnings);
 router.get('/availability', authenticate, getProviderAvailability);
 router.put('/availability', authenticate, updateProviderAvailability);
+router.put('/profile', authenticate, updateProviderProfile);
 
 export default router;

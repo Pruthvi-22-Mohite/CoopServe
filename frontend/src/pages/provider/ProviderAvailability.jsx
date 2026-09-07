@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -18,6 +19,7 @@ import {
 
 export const ProviderAvailability = () => {
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [isAvailable, setIsAvailable] = useState(true);
   const [availabilityStatus, setAvailabilityStatus] = useState('Available Today');
   const [selectedAreas, setSelectedAreas] = useState([]);
@@ -69,35 +71,38 @@ export const ProviderAvailability = () => {
         serviceAreas: selectedAreas
       });
       if (res.success) {
-        showToast('Availability preferences updated successfully!', 'success');
+        showToast(t('worker_avail_success_toast', 'Availability preferences updated successfully!'), 'success');
       }
     } catch (err) {
-      showToast(err.message || 'Failed to update availability', 'error');
+      showToast(err.message || t('worker_avail_fail_toast', 'Failed to update availability'), 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading availability settings..." />;
+    return <LoadingState message={t('worker_loading_avail', 'Loading availability settings...')} />;
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Duty Status & Service Coverage Area"
-        description="Control your real-time dispatch availability and choose which Pune localities you want to receive smart job matches for."
-        breadcrumbs={['Home', 'Availability']}
+        title={t('worker_avail_page_title', 'Duty Status & Service Coverage Area')}
+        description={t(
+          'worker_avail_page_desc',
+          'Control your real-time dispatch availability and choose which Pune localities you want to receive smart job matches for.'
+        )}
+        breadcrumbs={[t('nav_dashboard', 'Home'), t('worker_menu_availability', 'Availability')]}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (5 cols): Main Duty Toggle */}
         <div className="lg:col-span-5 space-y-4">
-          <Card className="p-6 space-y-4">
+          <Card className="p-6 space-y-4 bg-white">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-base text-slate-900">Duty Toggle</h3>
-                <p className="text-xs text-slate-500">Enable to receive AI matched bookings</p>
+                <h3 className="font-bold text-base text-slate-900">{t('worker_duty_toggle_title', 'Duty Toggle')}</h3>
+                <p className="text-xs text-slate-500">{t('worker_duty_toggle_desc', 'Enable to receive AI matched bookings')}</p>
               </div>
               <button
                 onClick={() => setIsAvailable(!isAvailable)}
@@ -115,27 +120,27 @@ export const ProviderAvailability = () => {
               isAvailable ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-600'
             }`}>
               <span className="font-bold block">
-                {isAvailable ? '🟢 Online & Ready for Dispatch' : '⚪ Off Duty'}
+                {isAvailable ? t('worker_online_ready', '🟢 Online & Ready for Dispatch') : t('worker_off_duty_status', '⚪ Off Duty')}
               </span>
               <p className="text-[11px] mt-0.5">
                 {isAvailable
-                  ? 'Your profile is highlighted in the Smart Matching engine for customers in your service hubs.'
-                  : 'You will not receive new instant dispatch requests until turned on.'}
+                  ? t('worker_online_hint', 'Your profile is highlighted in the Smart Matching engine for customers in your service hubs.')
+                  : t('worker_offline_hint', 'You will not receive new instant dispatch requests until turned on.')}
               </p>
             </div>
 
             {isAvailable && (
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Availability Slot Status
+                  {t('worker_slot_status_label', 'Availability Slot Status')}
                 </label>
                 <select
                   value={availabilityStatus}
                   onChange={(e) => setAvailabilityStatus(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="Available Today">Available Today (Instant Dispatch)</option>
-                  <option value="Available Tomorrow">Available Tomorrow (Pre-scheduled)</option>
+                  <option value="Available Today">{t('worker_avail_today_option', 'Available Today (Instant Dispatch)')}</option>
+                  <option value="Available Tomorrow">{t('worker_avail_tomorrow_option', 'Available Tomorrow (Pre-scheduled)')}</option>
                 </select>
               </div>
             )}
@@ -144,11 +149,11 @@ export const ProviderAvailability = () => {
 
         {/* Right Column (7 cols): Service Coverage Selection */}
         <div className="lg:col-span-7 space-y-4">
-          <Card className="p-6 space-y-4">
+          <Card className="p-6 space-y-4 bg-white">
             <div>
-              <h3 className="font-bold text-base text-slate-900">Service Coverage Areas</h3>
+              <h3 className="font-bold text-base text-slate-900">{t('worker_coverage_areas_title', 'Service Coverage Areas')}</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Add the areas where you want to accept jobs ({selectedAreas.length} selected).
+                {t('worker_coverage_areas_desc', 'Add the areas where you want to accept jobs ({count} selected).').replace('{count}', selectedAreas.length)}
               </p>
             </div>
 
@@ -157,10 +162,12 @@ export const ProviderAvailability = () => {
                 value={coverageArea}
                 onChange={(e) => setCoverageArea(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoverageArea(); } }}
-                placeholder="Enter a service area"
+                placeholder={t('worker_enter_area_placeholder', 'Enter a service area')}
                 className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-              <Button type="button" variant="outline" size="sm" onClick={addCoverageArea}>Add Area</Button>
+              <Button type="button" variant="outline" size="sm" onClick={addCoverageArea}>
+                {t('worker_add_area_btn', 'Add Area')}
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -192,7 +199,7 @@ export const ProviderAvailability = () => {
                 onClick={handleSave}
                 leftIcon={<Save className="w-4 h-4" />}
               >
-                Save Availability Settings
+                {t('worker_save_avail_btn', 'Save Availability Settings')}
               </Button>
             </div>
           </Card>

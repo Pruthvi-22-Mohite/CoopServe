@@ -4,24 +4,30 @@ import {
   getAdminProviders,
   updateProviderStatus,
   getAdminCustomers,
+  getAdminBookings,
   getAdminMatchingInspection,
   getAdminCancellationAndLeakage,
-  getAdminAIInsights
+  getAdminAIInsights,
+  getAdminNotifications,
+  markAdminNotificationsRead,
+  getAdminSettings
 } from '../controllers/adminController.js';
 import { authenticate, authorize } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Enforce role-based route protection: Only ADMIN role is allowed to access Admin APIs
 router.use(authenticate, authorize('ADMIN'));
 
-router.get('/dashboard', authenticate, authorize('ADMIN'), getAdminDashboardStats);
-router.get('/providers', authenticate, authorize('ADMIN'), getAdminProviders);
-router.patch('/providers/:id', authenticate, authorize('ADMIN'), updateProviderStatus);
-router.get('/customers', authenticate, authorize('ADMIN'), getAdminCustomers);
-router.get('/matching', authenticate, authorize('ADMIN'), getAdminMatchingInspection);
-router.get('/leakage-risk', authenticate, authorize('ADMIN'), getAdminCancellationAndLeakage);
-router.get('/ai-insights', authenticate, authorize('ADMIN'), getAdminAIInsights);
+router.get('/dashboard', getAdminDashboardStats);
+router.get('/providers', getAdminProviders);
+router.patch('/providers/:id', updateProviderStatus);
+router.get('/customers', getAdminCustomers);
+router.get('/bookings', getAdminBookings);
+router.get('/matching', getAdminMatchingInspection);
+router.get('/leakage-risk', getAdminCancellationAndLeakage);
+router.get('/ai-insights', getAdminAIInsights);
+router.get('/notifications', getAdminNotifications);
+router.patch('/notifications/read-all', markAdminNotificationsRead);
+router.get('/settings', getAdminSettings);
 
 export default router;
-

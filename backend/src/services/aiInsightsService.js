@@ -1,131 +1,139 @@
 /**
  * CoopServe AI Predictive Insights & Demand Allocation Engine
- * Modular rule-based predictive service structured for drop-in proxy to Python FastAPI + Scikit-Learn.
+ * Rule-based insights derived from live provider and booking records.
  */
 
+const CATEGORY_LABELS = {
+  plumbing: 'Plumbing',
+  electrical: 'Electrical',
+  cleaning: 'Cleaning',
+  appliance: 'Appliance Repair',
+  carpentry: 'Carpentry',
+  gardening: 'Gardening',
+  painting: 'Painting',
+  community: 'Community Care',
+  general: 'General'
+};
+
+const demandLevel = (count, available) => {
+  if (count === 0) return 'Low';
+  if (available === 0 && count > 0) return 'High';
+  const ratio = count / Math.max(available, 1);
+  if (ratio >= 3) return 'High';
+  if (ratio >= 1.5) return 'Medium';
+  return 'Low';
+};
+
 export const generateAIDemandInsights = (providers = [], bookings = []) => {
-  // Service Demand Tiers (Simulated demand index from recent activity and seasonal trends in Pune)
-  const serviceDemand = [
-    {
-      category: 'Plumbing',
-      level: 'High',
-      growthRate: '+38%',
-      demandIndex: 94,
-      availableProviders: 1,
-      requiredProviders: 4,
-      shortage: 3,
-      peakHours: '08:30 AM - 12:00 PM',
-      predictionText: 'Plumbing demand expected to increase tomorrow due to local municipal water maintenance in Kothrud & Deccan.',
-      recommendation: '3 additional plumbing providers recommended for on-duty activation.'
-    },
-    {
-      category: 'Cleaning',
-      level: 'High',
-      growthRate: '+26%',
-      demandIndex: 88,
-      availableProviders: 1,
-      requiredProviders: 3,
-      shortage: 2,
-      peakHours: '09:00 AM - 01:30 PM',
-      predictionText: 'Weekend deep cleaning requests trending upward across Baner and Aundh.',
-      recommendation: '2 additional cleaning specialists suggested for Saturday morning slots.'
-    },
-    {
-      category: 'Electrical',
-      level: 'Medium',
-      growthRate: '+12%',
-      demandIndex: 72,
-      availableProviders: 2,
-      requiredProviders: 2,
-      shortage: 0,
-      peakHours: '10:00 AM - 03:00 PM',
-      predictionText: 'Steady demand for switchboard rewiring and voltage stabilizer fittings.',
-      recommendation: 'Current capacity is balanced with expected demand.'
-    },
-    {
-      category: 'Appliance Repair',
-      level: 'High',
-      growthRate: '+18%',
-      demandIndex: 84,
-      availableProviders: 1,
-      requiredProviders: 2,
-      shortage: 1,
-      peakHours: '11:00 AM - 04:00 PM',
-      predictionText: 'AC jet wash and refrigerator cooling repairs elevated in Karve Nagar & Warje.',
-      recommendation: '1 technician suggested for midday coverage.'
-    },
-    {
-      category: 'Carpentry',
-      level: 'Medium',
-      growthRate: '+8%',
-      demandIndex: 65,
-      availableProviders: 1,
-      requiredProviders: 1,
-      shortage: 0,
-      peakHours: '02:00 PM - 06:00 PM',
-      predictionText: 'Furniture assembly and door latch alignments at normal baseline.',
-      recommendation: 'Current allocation is optimal.'
-    },
-    {
-      category: 'Gardening',
-      level: 'Low',
-      growthRate: '+3%',
-      demandIndex: 42,
-      availableProviders: 1,
-      requiredProviders: 1,
-      shortage: 0,
-      peakHours: '07:00 AM - 10:00 AM',
-      predictionText: 'Balcony garden pruning and repotting demand normal.',
-      recommendation: 'Current capacity is sufficient.'
-    }
-  ];
+  const categoryIds = Object.keys(CATEGORY_LABELS);
+  const bookingByCategory = {};
+  bookings.forEach((b) => {
+    const cat = (b.category || 'general').toLowerCase();
+    bookingByCategory[cat] = (bookingByCategory[cat] || 0) + 1;
+  });
 
-  // Hourly Peak Demand Curve (Pune 24h Profile)
-  const hourlyPeakTrend = [
-    { hour: '07 AM', demand: 28, capacity: 45 },
-    { hour: '08 AM', demand: 58, capacity: 55 },
-    { hour: '09 AM', demand: 92, capacity: 70 },
-    { hour: '10 AM', demand: 98, capacity: 85 },
-    { hour: '11 AM', demand: 95, capacity: 85 },
-    { hour: '12 PM', demand: 78, capacity: 80 },
-    { hour: '01 PM', demand: 45, capacity: 75 },
-    { hour: '02 PM', demand: 52, capacity: 75 },
-    { hour: '03 PM', demand: 64, capacity: 75 },
-    { hour: '04 PM', demand: 76, capacity: 80 },
-    { hour: '05 PM', demand: 89, capacity: 80 },
-    { hour: '06 PM', demand: 86, capacity: 75 },
-    { hour: '07 PM', demand: 62, capacity: 60 },
-    { hour: '08 PM', demand: 34, capacity: 45 }
-  ];
+  const providerByCategory = {};
+  providers.forEach((p) => {
+    const cats = (p.categories && p.categories.length ? p.categories : [p.skill])
+      .map((c) => String(c || '').toLowerCase());
+    const matched = categoryIds.filter((id) =>
+      cats.some((c) => c.includes(id) || String(p.skill || '').toLowerCase().includes(id))
+    );
+    const keys = matched.length ? matched : ['general'];
+    keys.forEach((id) => {
+      providerByCategory[id] = (providerByCategory[id] || 0) + (p.isAvailable === false ? 0 : 1);
+    });
+  });
 
-  // 7-Day Demand Forecast
-  const weeklyForecast = [
-    { day: 'Mon', bookings: 68, predicted: 72 },
-    { day: 'Tue', bookings: 62, predicted: 65 },
-    { day: 'Wed', bookings: 75, predicted: 78 },
-    { day: 'Thu', bookings: 71, predicted: 74 },
-    { day: 'Fri', bookings: 84, predicted: 89 },
-    { day: 'Sat', bookings: 112, predicted: 125 },
-    { day: 'Sun', bookings: 128, predicted: 138 }
-  ];
+  const serviceDemand = categoryIds.map((id) => {
+    const count = bookingByCategory[id] || 0;
+    const availableProviders = providerByCategory[id] || 0;
+    const requiredProviders = Math.max(availableProviders, count > 0 ? Math.ceil(count / 4) : 0);
+    const shortage = Math.max(0, requiredProviders - availableProviders);
+    const level = demandLevel(count, availableProviders);
+    const growthRate = bookings.length > 0
+      ? `${Math.round((count / bookings.length) * 100)}%`
+      : '0%';
 
-  // Locality Capacity Balance in Pune
-  const localityBalance = [
-    { locality: 'Kothrud', demandScore: 92, activePros: 3, status: 'Shortage (Plumbing)' },
-    { locality: 'Shivajinagar', demandScore: 84, activePros: 4, status: 'Optimal' },
-    { locality: 'Deccan Gymkhana', demandScore: 78, activePros: 2, status: 'Optimal' },
-    { locality: 'Aundh & Baner', demandScore: 86, activePros: 2, status: 'Shortage (Cleaning)' },
-    { locality: 'Hadapsar', demandScore: 68, activePros: 2, status: 'Surplus Capacity' },
-    { locality: 'Karve Nagar', demandScore: 74, activePros: 2, status: 'Optimal' }
-  ];
+    return {
+      category: CATEGORY_LABELS[id],
+      level,
+      growthRate,
+      demandIndex: bookings.length > 0 ? Math.round((count / bookings.length) * 100) : 0,
+      availableProviders,
+      requiredProviders,
+      shortage,
+      peakHours: '—',
+      predictionText: `${count} live bookings in ${CATEGORY_LABELS[id]} with ${availableProviders} on-duty providers.`,
+      recommendation: shortage > 0
+        ? `${shortage} additional ${CATEGORY_LABELS[id]} provider(s) would cover current demand.`
+        : 'Current capacity matches recorded demand.'
+    };
+  }).filter((row) => row.demandIndex > 0 || row.availableProviders > 0);
 
-  // Holistic Matching Feedback Loop Metrics
+  const hourBuckets = {};
+  for (let h = 7; h <= 20; h += 1) {
+    const label = `${String(h).padStart(2, '0')}:00`;
+    hourBuckets[h] = { hour: label, demand: 0, capacity: providers.filter((p) => p.isAvailable !== false).length };
+  }
+  bookings.forEach((b) => {
+    const d = new Date(b.createdAt);
+    if (Number.isNaN(d.getTime())) return;
+    const h = d.getHours();
+    if (hourBuckets[h]) hourBuckets[h].demand += 1;
+  });
+  const hourlyPeakTrend = Object.values(hourBuckets);
+
+  const weeklyForecast = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i -= 1) {
+    const day = new Date(now);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(now.getDate() - i);
+    const next = new Date(day);
+    next.setDate(day.getDate() + 1);
+    const count = bookings.filter((b) => {
+      const created = new Date(b.createdAt);
+      return created >= day && created < next;
+    }).length;
+    weeklyForecast.push({
+      day: day.toLocaleDateString('en-GB', { weekday: 'short' }),
+      bookings: count,
+      predicted: count
+    });
+  }
+
+  const localityMap = {};
+  bookings.forEach((b) => {
+    const loc = b.serviceArea || b.serviceCity || 'Unspecified';
+    if (!localityMap[loc]) localityMap[loc] = { locality: loc, demandScore: 0, activePros: 0, status: 'Optimal' };
+    localityMap[loc].demandScore += 1;
+  });
+  providers.forEach((p) => {
+    const loc = p.location || (p.serviceAreas && p.serviceAreas[0]) || 'Unspecified';
+    if (!localityMap[loc]) localityMap[loc] = { locality: loc, demandScore: 0, activePros: 0, status: 'Optimal' };
+    if (p.isAvailable !== false) localityMap[loc].activePros += 1;
+  });
+  const localityBalance = Object.values(localityMap).map((row) => {
+    const status = row.demandScore > row.activePros * 4
+      ? 'Shortage'
+      : row.activePros > 0 && row.demandScore === 0
+        ? 'Surplus Capacity'
+        : 'Optimal';
+    return { ...row, status };
+  }).sort((a, b) => b.demandScore - a.demandScore).slice(0, 12);
+
+  const completed = bookings.filter((b) => b.status === 'COMPLETED').length;
+  const matchingEfficiencyScore = bookings.length > 0
+    ? `${Math.round((completed / bookings.length) * 100)}%`
+    : '0%';
+
   const ecosystemFeedback = {
-    matchingEfficiencyScore: '96.2%',
-    averageResponseTimeMins: 4.2,
-    fairWorkloadBalanceIndex: '94.6%',
+    matchingEfficiencyScore,
+    averageResponseTimeMins: null,
+    fairWorkloadBalanceIndex: providers.length > 0 ? `${Math.round((providers.filter((p) => p.isAvailable !== false).length / providers.length) * 100)}%` : '0%',
     surgePricingAvoidance: '100% Fixed Rates Maintained',
-    architectureModel: 'Rule-Based Engine (FastAPI / Scikit-Learn Interface Ready)'
+    architectureModel: 'Rule-Based Engine (live booking & provider counts)'
   };
 
   return {
