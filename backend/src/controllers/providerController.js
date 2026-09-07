@@ -96,6 +96,7 @@ export const getProviders = async (req, res) => {
 
 export const smartMatchProviders = async (req, res) => {
   try {
+    const radiusKm = req.body?.radiusKm ?? req.query?.radiusKm ?? null;
     const criteria = {
       categoryId: req.body?.categoryId || req.body?.category || req.query?.category || req.query?.categoryId || 'all',
       serviceId: req.body?.serviceId || req.query?.serviceId,
@@ -106,7 +107,19 @@ export const smartMatchProviders = async (req, res) => {
       minRating: req.body?.minRating || req.query?.minRating
     };
 
-    const allProviders = await Provider.find({}).lean();
+    let allProviders = await Provider.find({}).lean();
+
+    if (radiusKm !== null && radiusKm !== undefined && radiusKm !== '') {
+      const parsedRadius = Number(radiusKm);
+      if (!Number.isNaN(parsedRadius) && parsedRadius > 0) {
+        const filteredProviders = allProviders.filter((provider) => {
+          const distanceKm = Number(provider.distanceKm);
+          return Number.isFinite(distanceKm) && distanceKm <= parsedRadius;
+        });
+        allProviders = filteredProviders;
+      }
+    }
+
     const matchResult = matchProviders(allProviders, criteria);
 
     return res.status(200).json(matchResult);

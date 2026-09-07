@@ -216,6 +216,10 @@ const bookingSchema = new mongoose.Schema({
   },
   review: {
     type: String
+  },
+  emergencyRetryUsed: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

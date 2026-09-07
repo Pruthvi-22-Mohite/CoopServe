@@ -659,3 +659,166 @@ export const verifyBookingLocation = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+export const emergencyReassignBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { providerId } = req.body;
+
+    if (!providerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'New provider ID is required for emergency reassignment.'
+      });
+    }
+
+    const bookingQuery = mongoose.isValidObjectId(id)
+      ? { $or: [{ _id: id }, { id }] }
+      : { id };
+
+    const booking = await Booking.findOne(bookingQuery);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const isAuthorized = await isUserAuthorizedForBooking(req.user, booking);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to reassign this booking.'
+      });
+    }
+
+    const providerQuery = mongoose.isValidObjectId(providerId)
+      ? { $or: [{ _id: providerId }, { id: providerId }] }
+      : { id: providerId };
+
+    const provider = await Provider.findOne(providerQuery);
+    if (!provider) {
+      return res.status(404).json({ success: false, message: 'Replacement provider not found' });
+    }
+
+    if (provider.status === 'Suspended') {
+      return res.status(409).json({
+        success: false,
+        message: 'Replacement provider is not available for emergency assignment.'
+      });
+    }
+
+    const replacementProviderId = provider.id || providerId;
+    if (replacementProviderId === booking.providerId) {
+      return res.status(409).json({
+        success: false,
+        message: 'The replacement provider must be different from the current provider.'
+      });
+    }
+
+    if (booking.status !== 'BOOKED') {
+      return res.status(409).json({
+        success: false,
+        message: 'Emergency reassignment is only allowed while the booking is still waiting for provider acceptance.',
+        booking
+      });
+    }
+
+    if (booking.emergencyRetryUsed) {
+      return res.status(409).json({
+        success: false,
+        message: 'Emergency retry has already been used for this booking.'
+      });
+    }
+
+    const previousProviderId = booking.providerId;
+    const previousProviderName = booking.providerName;
+
+    const updatedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        status: 'BOOKED',
+        emergencyRetryUsed: false,
+        providerId: { $ne: replacementProviderId }
+      },
+      {
+        $set: {
+          providerId: replacementProviderId,
+          providerName: provider.name,
+          providerPhone: provider.phone || booking.providerPhone,
+          providerAvatar: provider.avatar || booking.providerAvatar,
+          providerSkill: provider.skill || booking.providerSkill,
+          providerTrustScore: provider.trustScore || booking.providerTrustScore,
+          emergencyRetryUsed: true
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedBooking) {
+      return res.status(409).json({
+        success: false,
+        message: 'Emergency retry is no longer available because the booking changed state or the retry was already used.'
+      });
+    }
+
+    try {
+      await Notification.create({
+        id: `notif_${Date.now()}_reassign_cust`,
+        userId: updatedBooking.customerId,
+        title: 'Emergency Provider Reassigned',
+        message: `Your emergency request for ${updatedBooking.serviceTitle} has been reassigned to ${updatedBooking.providerName}.`,
+        type: 'BOOKING_REASSIGNED',
+        read: false
+      });
+
+      await Notification.create({
+        id: `notif_${Date.now()}_reassign_prov`,
+        userId: updatedBooking.providerId,
+        title: 'Emergency Service Request Reassigned',
+        message: `You have been assigned an emergency request for ${updatedBooking.serviceTitle} from ${updatedBooking.customerName}.`,
+        type: 'JOB_REQUEST',
+        read: false
+      });
+    } catch (notifErr) {
+      console.warn('[Emergency Reassignment Notification Error]', notifErr.message);
+    }
+
+    if (req.io) {
+      req.io.to(updatedBooking.id).emit('booking_reassigned', {
+        bookingId: updatedBooking.id,
+        previousProviderId,
+        previousProviderName,
+        newProviderId: updatedBooking.providerId,
+        newProviderName: updatedBooking.providerName,
+        booking: updatedBooking
+      });
+      if (updatedBooking.customerId) {
+        req.io.to(updatedBooking.customerId).emit('booking_reassigned', {
+          bookingId: updatedBooking.id,
+          previousProviderId,
+          previousProviderName,
+          newProviderId: updatedBooking.providerId,
+          newProviderName: updatedBooking.providerName,
+          booking: updatedBooking
+        });
+      }
+      if (updatedBooking.providerId) {
+        req.io.to(updatedBooking.providerId).emit('new_booking_created', updatedBooking);
+      }
+      req.io.to('admin').emit('booking_reassigned', {
+        bookingId: updatedBooking.id,
+        previousProviderId,
+        previousProviderName,
+        newProviderId: updatedBooking.providerId,
+        newProviderName: updatedBooking.providerName,
+        booking: updatedBooking
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Emergency booking reassigned to a new provider without creating a duplicate booking.',
+      booking: updatedBooking
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};

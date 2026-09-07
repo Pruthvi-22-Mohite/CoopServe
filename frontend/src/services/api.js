@@ -277,6 +277,13 @@ class ApiService {
     });
   }
 
+  emergencyReassignBooking(id, providerId) {
+    return this.request(`/bookings/${id}/emergency-reassign`, {
+      method: 'POST',
+      body: JSON.stringify({ providerId })
+    });
+  }
+
   // Provider Module APIs
   getProviderStats() {
     return this.request('/provider/stats');
