@@ -318,6 +318,13 @@ class ApiService {
     });
   }
 
+  updateProviderProfile(data) {
+    return this.request('/provider/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
   // Customer Profile & Notifications
   getCustomerProfile() {
     return this.request('/customer/profile');
@@ -390,6 +397,24 @@ class ApiService {
 
   getAdminAIInsights() {
     return this.request('/admin/ai-insights');
+  }
+
+  getAdminBookings() {
+    return this.request('/admin/bookings');
+  }
+
+  getAdminNotifications() {
+    return this.request('/admin/notifications');
+  }
+
+  markAdminNotificationsRead() {
+    return this.request('/admin/notifications/read-all', {
+      method: 'PATCH'
+    });
+  }
+
+  getAdminSettings() {
+    return this.request('/admin/settings');
   }
 
   // Real-Time In-App Chat APIs

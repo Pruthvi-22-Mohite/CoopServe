@@ -54,6 +54,39 @@ export const clearRefreshTokenCookie = (res) => {
   });
 };
 
+// Safe query helpers that gracefully fallback to inMemoryStore if MongoDB connection is unavailable
+export const findUserByEmailSafe = async (email) => {
+  const normalizedEmail = (email || '').toLowerCase().trim();
+  if (!normalizedEmail) return null;
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const user = await User.findOne({ email: normalizedEmail });
+      if (user) return user;
+    } catch (err) {
+      console.warn('[Auth] User lookup via MongoDB failed:', err.message);
+    }
+  }
+  return inMemoryStore.findUserByEmail(normalizedEmail);
+};
+
+export const findUserByIdSafe = async (id) => {
+  if (!id) return null;
+  if (mongoose.connection.readyState === 1) {
+    try {
+      let user = null;
+      if (mongoose.isValidObjectId(id)) {
+        user = await User.findOne({ $or: [{ _id: id }, { id }] });
+      } else {
+        user = await User.findOne({ id });
+      }
+      if (user) return user;
+    } catch (err) {
+      console.warn('[Auth] User lookup by ID via MongoDB failed:', err.message);
+    }
+  }
+  return inMemoryStore.findUserById(id);
+};
+
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -65,10 +98,7 @@ export const login = async (req, res) => {
       });
     }
 
-    let user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      user = inMemoryStore.findUserByEmail(email);
-    }
+    const user = await findUserByEmailSafe(email);
 
     if (!user) {
       return res.status(401).json({
@@ -136,10 +166,7 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    let user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      user = inMemoryStore.findUserByEmail(email);
-    }
+    const user = await findUserByEmailSafe(email);
 
     if (!user) {
       return res.status(401).json({
@@ -213,7 +240,14 @@ export const demoLogin = async (req, res) => {
       targetRole = ROLES.CUSTOMER;
     }
 
-    let demoUser = await User.findOne({ role: targetRole, isDemoAccount: true });
+    let demoUser = null;
+    if (mongoose.connection.readyState === 1) {
+      try {
+        demoUser = await User.findOne({ role: targetRole, isDemoAccount: true });
+      } catch (dbErr) {
+        console.warn('[Auth] Demo user query error:', dbErr.message);
+      }
+    }
     if (!demoUser) {
       demoUser = inMemoryStore.users.find(u => u.role === targetRole);
     }
@@ -322,8 +356,8 @@ export const register = async (req, res) => {
     }
 
     // 5. Existing User Check
-    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existingUser || inMemoryStore.findUserByEmail(email)) {
+    const existingUser = await findUserByEmailSafe(email);
+    if (existingUser) {
       return res.status(400).json({
         success: false,
         message: 'A user with this email already exists.'
@@ -479,16 +513,7 @@ export const refresh = async (req, res) => {
       });
     }
 
-    let user = null;
-    if (mongoose.isValidObjectId(decoded.id)) {
-      user = await User.findOne({ $or: [{ _id: decoded.id }, { id: decoded.id }] });
-    } else {
-      user = await User.findOne({ id: decoded.id });
-    }
-
-    if (!user) {
-      user = inMemoryStore.findUserById(decoded.id);
-    }
+    const user = await findUserByIdSafe(decoded.id);
 
     if (!user) {
       return res.status(401).json({

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 
 export const AdminNotifications = () => {
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState([
     {
       id: 'an_1',
@@ -47,12 +49,12 @@ export const AdminNotifications = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Administrative Broadcasts & System Alerts"
-        description="Monitor system-level dispatch events, provider verifications, and technician onboarding requests."
+        title={t('admin_notif_title')}
+        description={t('admin_notif_desc')}
         breadcrumbs={['Home', 'Admin', 'Notifications']}
         actions={
           <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
-            Mark All as Read
+            {t('admin_notif_mark_all_read')}
           </Button>
         }
       />

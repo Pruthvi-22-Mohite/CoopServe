@@ -145,8 +145,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    index: true,
-    default: ''
+    index: true
   },
   vehicleAvailable: {
     type: Boolean,

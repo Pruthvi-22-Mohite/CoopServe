@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -9,17 +10,16 @@ import { Button } from '../../components/common/Button';
 import {
   ShieldCheck,
   Award,
-  Sparkles,
-  Users,
-  CheckCircle2,
   BookOpen,
   Vote,
-  Loader2
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 
 export const ProviderCooperative = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [poll, setPoll] = useState(null);
   const [selectedOption, setSelectedOption] = useState('');
   const [hasVoted, setHasVoted] = useState(false);
@@ -60,11 +60,11 @@ export const ProviderCooperative = () => {
         setHasVoted(true);
         setSelectedOption(res.vote?.selectedOption || selectedOption);
         setPoll(res.poll || poll);
-        showToast(res.message || 'Vote recorded successfully.', 'success');
+        showToast(res.message || t('worker_vote_success_toast', 'Vote recorded successfully.'), 'success');
       }
     } catch (err) {
       setError(err.message || 'Your vote could not be submitted.');
-      showToast(err.message || 'Voting failed.', 'error');
+      showToast(err.message || t('worker_vote_fail_toast', 'Voting failed.'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -78,9 +78,12 @@ export const ProviderCooperative = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cooperative Member Portal & Upskilling"
-        description="Equal member-owner representation in CoopServe: democratic voting, fair workload balancing, advanced vocational certifications, and verified credentials."
-        breadcrumbs={['Home', 'Cooperative']}
+        title={t('worker_coop_page_title', 'Cooperative Member Portal & Upskilling')}
+        description={t(
+          'worker_coop_page_desc',
+          'Equal member-owner representation in CoopServe: democratic voting, fair workload balancing, advanced vocational certifications, and verified credentials.'
+        )}
+        breadcrumbs={[t('nav_dashboard', 'Home'), t('nav_cooperative', 'Cooperative')]}
         badge={
           <Badge variant="coop" size="sm">
             Member ID: {user?.id || 'COOP-MH-2024-001'}
@@ -95,16 +98,21 @@ export const ProviderCooperative = () => {
               MAHARASHTRA SAHAKARI SEVA SANSTHA
             </span>
             <h3 className="text-2xl font-black text-white mt-1">
-              CoopServe Member Professional Network
+              {t('worker_coop_member_network', 'CoopServe Member Professional Network')}
             </h3>
             <p className="text-xs text-teal-100 max-w-2xl mt-1 leading-relaxed">
-              Collective worker governance without venture capital extraction. Equal 1-member 1-vote representation on service standards, training opportunities, fair queue allocation, and dispute arbitration.
+              {t(
+                'worker_coop_network_desc',
+                'Collective worker governance without venture capital extraction. Equal 1-member 1-vote representation on service standards, training opportunities, fair queue allocation, and dispute arbitration.'
+              )}
             </p>
           </div>
 
           <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-center shrink-0">
             <span className="text-2xl font-black text-emerald-300">128</span>
-            <span className="text-[10px] uppercase font-bold text-white block mt-0.5">Active Certified Pros</span>
+            <span className="text-[10px] uppercase font-bold text-white block mt-0.5">
+              {t('worker_active_certified_pros', 'Active Certified Pros')}
+            </span>
           </div>
         </div>
       </Card>
@@ -114,60 +122,62 @@ export const ProviderCooperative = () => {
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
             <ShieldCheck className="w-5 h-5 text-emerald-600" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900">Fair Job Distribution</h4>
+          <h4 className="font-bold text-sm text-slate-900">{t('worker_fair_job_dist', 'Fair Job Distribution')}</h4>
           <p className="text-xs text-slate-500 leading-relaxed">
-            AI-driven queue balancing ensures new members receive equal dispatch opportunities without gig starvation.
+            {t('worker_fair_job_desc', 'AI-driven queue balancing ensures new members receive equal dispatch opportunities without gig starvation.')}
           </p>
-          <Badge variant="success" size="sm">87% Balanced Queue</Badge>
+          <Badge variant="success" size="sm">{t('worker_balanced_queue_badge', '87% Balanced Queue')}</Badge>
         </Card>
 
         <Card className="p-5 border border-slate-200/90 space-y-2 bg-white">
           <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold">
             <BookOpen className="w-5 h-5 text-teal-600" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900">Vocational Upskilling</h4>
+          <h4 className="font-bold text-sm text-slate-900">{t('worker_vocational_upskilling', 'Vocational Upskilling')}</h4>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Hands-on masterclasses in rooftop solar, micro-inverters, inverter HVAC, and modern smart home automation.
+            {t('worker_upskilling_desc', 'Hands-on masterclasses in rooftop solar, micro-inverters, inverter HVAC, and modern smart home automation.')}
           </p>
-          <Badge variant="coop" size="sm">8 Active Programs</Badge>
+          <Badge variant="coop" size="sm">{t('worker_active_programs_badge', '8 Active Programs')}</Badge>
         </Card>
 
         <Card className="p-5 border border-slate-200/90 space-y-2 bg-white">
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
             <Award className="w-5 h-5 text-amber-600" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900">Verified Work Credential</h4>
+          <h4 className="font-bold text-sm text-slate-900">{t('worker_verified_work_cred', 'Verified Work Credential')}</h4>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Every completed service builds your tamper-proof work record, unlocking priority matching and master artisan status.
+            {t('worker_verified_cred_desc', 'Every completed service builds your tamper-proof work record, unlocking priority matching and master artisan status.')}
           </p>
-          <Badge variant="warning" size="sm">Portable Record</Badge>
+          <Badge variant="warning" size="sm">{t('worker_portable_rec_badge', 'Portable Record')}</Badge>
         </Card>
 
         <Card className="p-5 border border-slate-200/90 space-y-2 bg-white">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
             <Vote className="w-5 h-5 text-indigo-600" />
           </div>
-          <h4 className="font-bold text-sm text-slate-900">Democratic Member Voice</h4>
+          <h4 className="font-bold text-sm text-slate-900">{t('worker_democratic_voice', 'Democratic Member Voice')}</h4>
           <p className="text-xs text-slate-500 leading-relaxed">
-            1 Member 1 Vote policy. Participate directly in deciding tool standards, service quality criteria, and cooperative resolutions.
+            {t('worker_democratic_voice_desc', '1 Member 1 Vote policy. Participate directly in deciding tool standards, service quality criteria, and cooperative resolutions.')}
           </p>
-          <Badge variant="info" size="sm">1 Member 1 Vote</Badge>
+          <Badge variant="info" size="sm">{t('worker_1m1v_badge', '1 Member 1 Vote')}</Badge>
         </Card>
       </div>
 
       <Card className="p-5 border border-emerald-200 bg-emerald-50/60 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Active Governance Poll</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+              {t('worker_active_gov_poll', 'Active Governance Poll')}
+            </p>
             <h3 className="text-lg font-black text-slate-900 mt-1">Commission Review Proposal</h3>
           </div>
-          <Badge variant="success" size="sm">Voting Open</Badge>
+          <Badge variant="success" size="sm">{t('worker_voting_open_badge', 'Voting Open')}</Badge>
         </div>
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-            Loading current poll...
+            {t('worker_loading_poll', 'Loading current poll...')}
           </div>
         ) : poll ? (
           <div className="space-y-5">
@@ -221,17 +231,17 @@ export const ProviderCooperative = () => {
                 isLoading={isSubmitting}
                 disabled={!selectedOption || isSubmitting || hasVoted}
               >
-                {hasVoted ? 'Vote Recorded' : 'Submit Vote'}
+                {hasVoted ? t('worker_vote_recorded_btn', 'Vote Recorded') : t('worker_submit_vote_btn', 'Submit Vote')}
               </Button>
 
               <div className="text-xs text-slate-500">
-                {poll.results?.totalVotes ?? 0} provider votes recorded
+                {t('worker_votes_recorded_sub', '{count} provider votes recorded').replace('{count}', poll.results?.totalVotes ?? 0)}
               </div>
             </div>
 
             {hasVoted && selectedOption && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-100/60 px-3 py-2 text-xs font-medium text-emerald-800">
-                Your vote is recorded: <span className="font-bold">{getOptionLabel(selectedOption)}</span>
+                {t('worker_your_vote_recorded', 'Your vote is recorded:')} <span className="font-bold">{getOptionLabel(selectedOption)}</span>
               </div>
             )}
 
@@ -251,7 +261,7 @@ export const ProviderCooperative = () => {
                     />
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500">
-                    {poll.results?.percentages?.[option.value] ?? 0}% of votes
+                    {t('worker_pct_votes', '{pct}% of votes').replace('{pct}', poll.results?.percentages?.[option.value] ?? 0)}
                   </div>
                 </div>
               ))}
@@ -259,7 +269,7 @@ export const ProviderCooperative = () => {
           </div>
         ) : (
           <div className="text-sm text-slate-600">
-            No active governance poll is currently available.
+            {t('worker_no_active_poll', 'No active governance poll is currently available.')}
           </div>
         )}
       </Card>

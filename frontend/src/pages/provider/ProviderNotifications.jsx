@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -17,6 +18,7 @@ import {
 
 export const ProviderNotifications = () => {
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -26,7 +28,7 @@ export const ProviderNotifications = () => {
       try {
         const res = await api.getNotifications();
         if (res.success) {
-          setNotifications(res.notifications);
+          setNotifications(res.notifications || []);
         }
       } catch (err) {
         console.error('Error fetching provider notifications:', err);
@@ -44,10 +46,10 @@ export const ProviderNotifications = () => {
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n))
         );
-        showToast('Notification marked as read', 'info');
+        showToast(t('worker_notif_marked_toast', 'Notification marked as read'), 'info');
       }
     } catch (err) {
-      showToast('Failed to update notification', 'error');
+      showToast(t('worker_notif_failed_toast', 'Failed to update notification'), 'error');
     }
   };
 
@@ -63,7 +65,7 @@ export const ProviderNotifications = () => {
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading worker dispatch notifications..." />;
+    return <LoadingState message={t('worker_loading_notifs', 'Loading worker dispatch notifications...')} />;
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -71,17 +73,20 @@ export const ProviderNotifications = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Worker Dispatch Alerts & Settlement Notifications"
-        description="Real-time notifications for incoming job requests, status updates, and auto-settlement bank payouts."
-        breadcrumbs={['Home', 'Notifications']}
+        title={t('worker_notif_page_title', 'Worker Dispatch Alerts & Settlement Notifications')}
+        description={t(
+          'worker_notif_page_desc',
+          'Real-time notifications for incoming job requests, status updates, and auto-settlement bank payouts.'
+        )}
+        breadcrumbs={[t('nav_dashboard', 'Home'), t('worker_menu_notifications', 'Notifications')]}
         badge={
           unreadCount > 0 ? (
             <Badge variant="warning" size="sm">
-              {unreadCount} Unread
+              {unreadCount} {t('worker_unread_count_badge', 'Unread')}
             </Badge>
           ) : (
             <Badge variant="success" size="sm">
-              All Caught Up
+              {t('worker_all_caught_up_badge', 'All Caught Up')}
             </Badge>
           )
         }
@@ -90,8 +95,11 @@ export const ProviderNotifications = () => {
       {notifications.length === 0 ? (
         <EmptyState
           icon={Bell}
-          title="No notifications at the moment"
-          description="You will receive alerts here whenever a new booking is assigned to you."
+          title={t('worker_no_notifs_title', 'No notifications at the moment')}
+          description={t(
+            'worker_no_notifs_desc',
+            'You will receive alerts here whenever a new booking is assigned to you.'
+          )}
         />
       ) : (
         <div className="space-y-3 max-w-4xl">
@@ -127,7 +135,7 @@ export const ProviderNotifications = () => {
                   onClick={() => handleMarkAsRead(n.id)}
                   className="shrink-0 text-xs text-amber-700 hover:bg-amber-100"
                 >
-                  <Check className="w-3.5 h-3.5 mr-1" /> Mark Read
+                  <Check className="w-3.5 h-3.5 mr-1" /> {t('worker_mark_read_btn', 'Mark Read')}
                 </Button>
               )}
             </Card>

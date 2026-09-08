@@ -7,23 +7,23 @@ import { geocodePlace, haversineDistanceMeters } from '../utils/geolocation.js';
 
 export const enrichProviderDynamicRating = async (provider) => {
   if (!provider) return provider;
-  const provId = provider.id || (provider._id ? provider._id.toString() : '');
-  
-  // Find all verified reviews for this provider
+  const providerIdentities = [];
+  if (provider.id) providerIdentities.push(provider.id);
+  if (provider._id) providerIdentities.push(provider._id.toString());
+  if (provider.userId) providerIdentities.push(provider.userId);
+  if (provider.workerId) providerIdentities.push(provider.workerId);
+
+  // Find all verified, authentic customer reviews for this provider in MongoDB
   const reviews = await Review.find({
-    $or: [
-      { providerId: provId },
-      ...(provider._id ? [{ providerId: provider._id.toString() }] : [])
-    ],
+    providerId: { $in: providerIdentities },
     isSuspicious: false
   }).lean();
 
-  const allReviews = (reviews && reviews.length > 0) ? reviews : (provider.reviews || []);
-  const validReviews = allReviews.filter(r => typeof r.rating === 'number' && r.rating > 0);
+  const validReviews = (reviews || []).filter(r => typeof r.rating === 'number' && r.rating > 0);
 
   if (validReviews.length > 0) {
     const avg = validReviews.reduce((sum, r) => sum + r.rating, 0) / validReviews.length;
-    provider.rating = parseFloat(avg.toFixed(1));
+    provider.rating = parseFloat(avg.toFixed(2));
     provider.reviewsCount = validReviews.length;
   } else {
     provider.rating = 0;
@@ -280,32 +280,55 @@ export const getBookedSlots = async (req, res) => {
 export const getProviderReviews = async (req, res) => {
   try {
     const { id } = req.params;
-    const query = mongoose.isValidObjectId(id)
-      ? { $or: [{ _id: id }, { id }] }
-      : { id };
+    let provider = null;
 
-    const provider = await Provider.findOne(query);
+    if (id === 'me' && req.user?.id) {
+      const uId = req.user.id;
+      const userQuery = mongoose.isValidObjectId(uId)
+        ? { $or: [{ _id: uId }, { id: uId }, { userId: uId }, { workerId: uId }] }
+        : { $or: [{ id: uId }, { userId: uId }, { workerId: uId }] };
+      provider = await Provider.findOne(userQuery);
+      if (!provider && req.user.email) {
+        provider = await Provider.findOne({ email: req.user.email.toLowerCase() });
+      }
+    } else {
+      const query = mongoose.isValidObjectId(id)
+        ? { $or: [{ _id: id }, { id }, { userId: id }, { workerId: id }] }
+        : { $or: [{ id }, { userId: id }, { workerId: id }] };
+      provider = await Provider.findOne(query);
+    }
 
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider not found' });
     }
 
-    const providerIdVal = provider.id || (provider._id ? provider._id.toString() : id);
-    let reviews = await Review.find({
-      $or: [
-        { providerId: providerIdVal },
-        { providerId: id },
-        ...(provider._id ? [{ providerId: provider._id.toString() }] : [])
-      ]
-    }).sort({ createdAt: -1 });
+    const providerIdentities = [id];
+    if (provider.id && !providerIdentities.includes(provider.id)) providerIdentities.push(provider.id);
+    if (provider._id && !providerIdentities.includes(provider._id.toString())) providerIdentities.push(provider._id.toString());
+    if (provider.userId && !providerIdentities.includes(provider.userId)) providerIdentities.push(provider.userId);
+    if (provider.workerId && !providerIdentities.includes(provider.workerId)) providerIdentities.push(provider.workerId);
 
-    if (!reviews || reviews.length === 0) {
-      reviews = provider.reviews || [];
-    }
+    const reviews = await Review.find({
+      providerId: { $in: providerIdentities.filter(Boolean) },
+      isSuspicious: false
+    }).sort({ createdAt: -1 }).lean();
+
+    const validReviews = reviews || [];
+    const count = validReviews.length;
+    const averageRating = count > 0
+      ? parseFloat((validReviews.reduce((sum, r) => sum + r.rating, 0) / count).toFixed(2))
+      : 0;
+
+    const fiveStarCount = validReviews.filter(r => r.rating === 5).length;
+    const fiveStarRate = count > 0 ? parseFloat(((fiveStarCount / count) * 100).toFixed(1)) : 0;
 
     return res.status(200).json({
       success: true,
-      reviews
+      reviews: validReviews,
+      rating: averageRating,
+      reviewsCount: count,
+      fiveStarRate,
+      fiveStarCount
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

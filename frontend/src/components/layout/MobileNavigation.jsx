@@ -25,10 +25,10 @@ export const MobileNavigation = () => {
   ];
 
   const providerTabs = [
-    { to: '/provider/dashboard', label: 'Home', icon: LayoutDashboard },
-    { to: '/provider/jobs', label: 'Jobs', icon: Briefcase },
-    { to: '/provider/earnings', label: 'Earnings', icon: IndianRupee },
-    { to: '/cooperative', label: 'Co-op', icon: Sparkles }
+    { to: '/provider/dashboard', label: t('nav_dashboard', 'Home'), icon: LayoutDashboard },
+    { to: '/provider/jobs', label: t('worker_menu_jobs', 'Jobs'), icon: Briefcase },
+    { to: '/provider/earnings', label: t('worker_menu_earnings', 'Earnings'), icon: IndianRupee },
+    { to: '/cooperative', label: t('nav_cooperative', 'Co-op'), icon: Sparkles }
   ];
 
   const adminTabs = [

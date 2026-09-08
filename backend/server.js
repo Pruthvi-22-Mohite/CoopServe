@@ -1,3 +1,12 @@
+import dns from 'node:dns';
+
+// Fix DNS SRV query lookup failures on Windows / local ISP networks for MongoDB Atlas
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (dnsErr) {
+  console.warn('[DNS] Custom DNS setup notice:', dnsErr.message);
+}
+
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -211,18 +220,47 @@ io.use(async (socket, next) => {
   next();
 });
 
+const joinUserRooms = async (sock, usr) => {
+  if (!usr) return;
+  const uid = usr.id ? String(usr.id) : '';
+  const uMongoId = usr._id ? String(usr._id) : '';
+  if (uid) sock.join(uid);
+  if (uMongoId && uMongoId !== uid) sock.join(uMongoId);
+  const roleUpper = (usr.role || '').toUpperCase();
+  if (roleUpper === 'ADMIN') sock.join('admin');
+  if (roleUpper === 'SERVICE_PROVIDER') {
+    if (usr.workerId) sock.join(usr.workerId);
+    if (uid === 'usr_provider_demo') {
+      sock.join('prov_1');
+      sock.join('usr_provider_demo');
+    }
+    try {
+      const provDoc = await Provider.findOne({
+        $or: [
+          { userId: uid },
+          { id: uid },
+          ...(mongoose.isValidObjectId(uid) ? [{ _id: uid }] : []),
+          ...(uMongoId && mongoose.isValidObjectId(uMongoId) ? [{ _id: uMongoId }] : [])
+        ]
+      });
+      if (provDoc) {
+        if (provDoc.id) sock.join(provDoc.id);
+        if (provDoc._id) sock.join(provDoc._id.toString());
+        if (provDoc.workerId) sock.join(provDoc.workerId);
+      }
+    } catch (err) {
+      console.warn('[Socket Room Join Provider Lookup Note]', err.message);
+    }
+  }
+};
+
 // Socket.IO real-time connection handler
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
   // Automatically join personal user and role rooms if authenticated
   if (socket.user) {
-    const uid = socket.user.id;
-    if (uid) socket.join(uid);
-    if (socket.user._id && socket.user._id !== uid) socket.join(socket.user._id);
-    const roleUpper = (socket.user.role || '').toUpperCase();
-    if (roleUpper === 'ADMIN') socket.join('admin');
-    if (roleUpper === 'SERVICE_PROVIDER' && uid) socket.join(`provider_${uid}`);
+    await joinUserRooms(socket, socket.user);
   }
 
   // Allow client to authenticate after initial connection
@@ -237,9 +275,7 @@ io.on('connection', (socket) => {
     }
     if (user) {
       socket.user = user;
-      if (user.id) socket.join(user.id);
-      const roleUpper = (user.role || '').toUpperCase();
-      if (roleUpper === 'ADMIN') socket.join('admin');
+      await joinUserRooms(socket, user);
       if (ack) ack({ success: true, user });
       socket.emit('authenticated', { success: true, user });
     } else {
@@ -359,4 +395,8 @@ const startServer = async () => {
   });
 };
 
-startServer();
+export { app };
+
+if (!process.env.VERCEL) {
+  startServer();
+}
