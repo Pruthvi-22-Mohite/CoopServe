@@ -149,7 +149,7 @@ export const SmartMatchCard = ({ matchResult, onBook }) => {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px] pt-1">
             <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
               <div className="flex justify-between text-slate-600 mb-1">
-                <span>Skill Match</span>
+                <span>Skill</span>
                 <span className="font-bold text-slate-900">{breakdown.skillScore}%</span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-1"><div className="bg-emerald-500 h-1 rounded-full" style={{ width: `${breakdown.skillScore}%` }} /></div>
