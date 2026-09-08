@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -22,6 +23,21 @@ export const AdminSettings = () => {
   const [opsShare, setOpsShare] = useState(10);
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.getAdminSettings();
+        if (res.success && res.settings) {
+          setWorkerShare(res.settings.workerSharePercent || 90);
+          setOpsShare(res.settings.platformFeePercent || 10);
+        }
+      } catch (err) {
+        console.warn('Error fetching settings:', err.message);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   const handleSave = (e) => {
     e.preventDefault();
     if (Number(workerShare) + Number(opsShare) !== 100) {
@@ -40,7 +56,7 @@ export const AdminSettings = () => {
       <PageHeader
         title={t('admin_settings_title')}
         description={t('admin_settings_desc')}
-        breadcrumbs={['Home', 'Admin', 'Settings']}
+        breadcrumbs={[t('nav_home'), t('role_admin_portal'), t('admin_nav_settings', 'Settings')]}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

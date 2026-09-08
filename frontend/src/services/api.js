@@ -437,6 +437,13 @@ class ApiService {
     });
   }
 
+  verifyRazorpayPayment(data) {
+    return this.request('/payments/verify', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
   getPaymentStatus(bookingId) {
     return this.request(`/payments/booking/${bookingId}/status`);
   }

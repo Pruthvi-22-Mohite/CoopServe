@@ -1,5 +1,5 @@
 import express from 'express';
-import { createOrder, handleWebhook, getPaymentStatus } from '../controllers/paymentController.js';
+import { createOrder, handleWebhook, getPaymentStatus, verifyPayment } from '../controllers/paymentController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -10,6 +10,7 @@ router.post('/webhook', handleWebhook);
 
 // Authenticated routes
 router.post('/create-order', authenticate, createOrder);
+router.post('/verify', authenticate, verifyPayment);
 router.get('/booking/:bookingId/status', authenticate, getPaymentStatus);
 
 export default router;

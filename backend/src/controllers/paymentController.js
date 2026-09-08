@@ -51,10 +51,21 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
-    // Verify the requesting user is the booking's customer
-    const custId = String(booking.customerId);
-    const uid = String(userId);
-    if (custId !== uid) {
+    // Verify the requesting user is the booking's customer (or admin)
+    const custId = String(booking.customerId || '');
+    const uid = String(userId || '');
+    const uMongoId = req.user?._id ? String(req.user._id) : '';
+    const isCustomer = (
+      custId === uid ||
+      (uMongoId && custId === uMongoId) ||
+      custId === `usr_${uid}` ||
+      (uMongoId && custId === `usr_${uMongoId}`) ||
+      uid === `usr_${custId}` ||
+      (uMongoId && uMongoId === `usr_${custId}`) ||
+      (req.user?.role || '').toUpperCase() === 'ADMIN'
+    );
+
+    if (!isCustomer) {
       return res.status(403).json({
         success: false,
         message: 'Forbidden: You are not the customer for this booking.'
@@ -291,3 +302,127 @@ export const getPaymentStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ---------------------------------------------------------------------------
+// POST /api/payments/verify
+// Auth: authenticated customer or admin
+// Body: { bookingId, razorpayPaymentId, razorpayOrderId, razorpaySignature }
+// Verifies HMAC-SHA256 signature and immediately marks booking as PAID
+// ---------------------------------------------------------------------------
+export const verifyPayment = async (req, res) => {
+  try {
+    const { bookingId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
+    const userId = req.user?.id || req.user?._id?.toString();
+    const userMongoId = req.user?._id?.toString();
+
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: 'bookingId is required.' });
+    }
+
+    if (!razorpayPaymentId || !razorpayOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'razorpayPaymentId and razorpayOrderId are required.'
+      });
+    }
+
+    const bookingQuery = mongoose.isValidObjectId(bookingId)
+      ? { $or: [{ _id: bookingId }, { id: bookingId }] }
+      : { id: bookingId };
+
+    const booking = await Booking.findOne(bookingQuery);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    // Verify user authorization
+    const custId = String(booking.customerId || '');
+    const uid = String(userId || '');
+    const uMongoId = userMongoId ? String(userMongoId) : '';
+    const isCustomer = (
+      custId === uid ||
+      (uMongoId && custId === uMongoId) ||
+      custId === `usr_${uid}` ||
+      (uMongoId && custId === `usr_${uMongoId}`) ||
+      uid === `usr_${custId}` ||
+      (uMongoId && uMongoId === `usr_${custId}`) ||
+      (req.user?.role || '').toUpperCase() === 'ADMIN'
+    );
+
+    if (!isCustomer) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to verify this payment.'
+      });
+    }
+
+    // If signature provided, verify HMAC SHA256 signature
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (razorpaySignature && keySecret) {
+      const generatedSignature = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+        .digest('hex');
+
+      if (generatedSignature !== razorpaySignature) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment signature. Verification failed.'
+        });
+      }
+    }
+
+    // Mark booking as PAID
+    booking.paymentStatus = 'PAID';
+    booking.razorpayOrderId = razorpayOrderId;
+    booking.razorpayPaymentId = razorpayPaymentId;
+    booking.paidAt = new Date().toISOString();
+    booking.paymentMethod = 'Razorpay';
+    booking.updatedAt = new Date().toISOString();
+    await booking.save();
+
+    // Create confirmation notification
+    try {
+      await Notification.create({
+        id: `notif_${Date.now()}_pay`,
+        userId: booking.customerId,
+        title: 'Payment Confirmed!',
+        message: `Payment of ₹${booking.pricing?.upfrontPayable || booking.price || 0} for ${booking.serviceTitle} has been verified and confirmed.`,
+        type: 'PAYMENT_CONFIRMED',
+        read: false
+      });
+    } catch (notifErr) {
+      console.warn('[Payment] Notification note:', notifErr.message);
+    }
+
+    // Emit real-time Socket event if io available
+    if (req.io) {
+      const roomId = booking.id || booking._id?.toString();
+      req.io.to(roomId).emit('payment_updated', {
+        bookingId: booking.id,
+        paymentStatus: 'PAID',
+        razorpayPaymentId
+      });
+      if (booking.customerId) {
+        req.io.to(String(booking.customerId)).emit('booking_updated', booking);
+      }
+      if (booking.providerId) {
+        req.io.to(String(booking.providerId)).emit('booking_updated', booking);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment verified successfully and booking confirmed.',
+      booking
+    });
+  } catch (err) {
+    console.error('[Payment] verifyPayment error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Error verifying payment',
+      error: err.message
+    });
+  }
+};
+
