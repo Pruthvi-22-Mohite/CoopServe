@@ -10,7 +10,7 @@
 
 - **90% Direct Worker Take-Home:** Workers receive 90% of every transaction, with a strictly capped 10% platform fee for server operations and dispute protection.
 - **Transparent Base Pricing + Distance-Based Travel Compensation:** Clear distance fee slabs ($0–2\text{ km}: ₹0$, $2–5\text{ km}: ₹20$, $5–10\text{ km}: ₹40$, $10+\text{ km}: ₹80$) ensure fair travel compensation with zero hidden markups.
-- **Multi-Factor AI Smart Matching:** 7-factor algorithmic dispatch weighting trade expertise, proximity, slot availability, rating, and cooperative workload queue balancing to prevent starvation and burnout.
+- **Multi-Factor AI Smart Matching:**  7-factor algorithmic dispatch weighting trade expertise, proximity, slot availability, rating, and cooperative workload queue balancing to prevent starvation and burnout. 
 - **100% Protected Booking Guarantee:** Digital receipts, dispute arbitration through a peer cooperative council, and verified portable work histories.
 - **Democratic Member Governance:** 1-member-1-vote cooperative hub for vocational certifications, safety standards, and collective decisions.
 
@@ -23,7 +23,7 @@
 - **Styling:** Tailwind CSS + PostCSS
 - **Icons:** Lucide React
 - **Visualizations:** Recharts (6-month revenue trends, 90/10 split donut, hourly demand curves)
-- **Real-Time:** Socket.IO Client
+- **Real-Time:** Socket.IO Client 
 - **Internationalization:** Multi-language support (English, Hindi, Marathi)
 
 ### Backend

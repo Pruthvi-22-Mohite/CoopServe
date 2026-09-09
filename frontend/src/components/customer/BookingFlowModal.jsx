@@ -256,35 +256,48 @@ export const BookingFlowModal = ({
         theme: {
           color: '#059669'
         },
-        handler: async function () {
+        handler: async function (response) {
           setStep(5);
           setIsVerifyingPayment(true);
           showToast(t('payment_submitted'), 'info');
 
-          // Refetch payment status after 3 seconds
-          setTimeout(async () => {
+          try {
+            const verifyRes = await api.verifyRazorpayPayment({
+              bookingId: newBooking.id,
+              razorpayPaymentId: response?.razorpay_payment_id,
+              razorpayOrderId: response?.razorpay_order_id,
+              razorpaySignature: response?.razorpay_signature
+            });
+
+            if (verifyRes.success) {
+              setPaymentConfirmed(true);
+              setCreatedBooking(prev => ({
+                ...prev,
+                paymentStatus: 'PAID',
+                razorpayPaymentId: response?.razorpay_payment_id
+              }));
+              if (onBookingCreated) {
+                onBookingCreated(verifyRes.booking || newBooking);
+              }
+              showToast('Payment verified successfully! Protected booking confirmed.', 'success');
+            } else {
+              showToast(verifyRes.message || 'Payment verification failed', 'error');
+            }
+          } catch (verErr) {
+            console.error('Payment verification error:', verErr);
+            // Fallback status check
             try {
               const statusRes = await api.getPaymentStatus(newBooking.id);
               if (statusRes.success && statusRes.paymentStatus === 'PAID') {
                 setPaymentConfirmed(true);
-                setCreatedBooking(prev => ({
-                  ...prev,
-                  paymentStatus: 'PAID',
-                  razorpayPaymentId: statusRes.paymentId
-                }));
-                if (onBookingCreated) {
-                  onBookingCreated(newBooking);
-                }
-                showToast('Payment verified successfully! Protected booking confirmed.', 'success');
-              } else {
-                showToast('Payment verification in progress. You can view status anytime.', 'info');
+                showToast('Payment confirmed!', 'success');
               }
             } catch (statusErr) {
-              console.error('Status verification error:', statusErr);
-            } finally {
-              setIsVerifyingPayment(false);
+              console.error('Fallback status check error:', statusErr);
             }
-          }, 3000);
+          } finally {
+            setIsVerifyingPayment(false);
+          }
         },
         modal: {
           ondismiss: function () {

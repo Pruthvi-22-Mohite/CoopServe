@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
+import { useAdminLiveRefresh } from '../../hooks/useAdminLiveRefresh';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatCard } from '../../components/common/StatCard';
 import { Card } from '../../components/common/Card';
@@ -37,28 +39,27 @@ import {
 } from 'recharts';
 
 export const AdminAIInsights = () => {
+  const { t } = useLanguage();
   const [insights, setInsights] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAI = async () => {
-      setIsLoading(true);
-      try {
-        const res = await api.getAdminAIInsights();
-        if (res.success) {
-          setInsights(res);
-        }
-      } catch (err) {
-        console.error('Error fetching AI insights:', err);
-      } finally {
-        setIsLoading(false);
+  const fetchAI = useCallback(async () => {
+    try {
+      const res = await api.getAdminAIInsights();
+      if (res.success) {
+        setInsights(res);
       }
-    };
-    fetchAI();
+    } catch (err) {
+      console.error('Error fetching AI insights:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
+  useAdminLiveRefresh(fetchAI);
+
   if (isLoading) {
-    return <LoadingState message="Running predictive demand modeling and locality capacity forecasting..." />;
+    return <LoadingState message={t('admin_ai_loading', 'Running predictive demand modeling and locality capacity forecasting...')} />;
   }
 
   const {
@@ -72,21 +73,21 @@ export const AdminAIInsights = () => {
   const getDemandBadge = (level) => {
     switch (level) {
       case 'High':
-        return <Badge variant="danger" size="sm">🔥 High Demand</Badge>;
+        return <Badge variant="danger" size="sm">🔥 {t('admin_demand_high', 'High Demand')}</Badge>;
       case 'Medium':
-        return <Badge variant="warning" size="sm">⚡ Medium Demand</Badge>;
+        return <Badge variant="warning" size="sm">⚡ {t('admin_demand_med', 'Medium Demand')}</Badge>;
       case 'Low':
       default:
-        return <Badge variant="info" size="sm">Normal Baseline</Badge>;
+        return <Badge variant="info" size="sm">{t('admin_demand_normal', 'Normal Baseline')}</Badge>;
     }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Predictive Demand & Capacity Allocation"
-        description="Forecast trade-level booking spikes, detect localized provider shortages, and optimize cooperative work distribution across Pune."
-        breadcrumbs={['Home', 'Admin', 'AI Demand Insights']}
+        title={t('admin_ai_title', 'AI Predictive Demand & Capacity Allocation')}
+        description={t('admin_ai_desc', 'Forecast trade-level booking spikes, detect localized provider shortages, and optimize cooperative work distribution across Pune.')}
+        breadcrumbs={[t('nav_home'), t('role_admin_portal'), t('admin_nav_ai_insights', 'AI Demand Insights')]}
         badge={
           <Badge variant="protected" size="sm">
             Predictive Engine v1.0

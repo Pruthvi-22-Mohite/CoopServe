@@ -77,24 +77,45 @@ export const CustomerBookingDetail = () => {
         theme: {
           color: '#059669'
         },
-        handler: async function () {
-          showToast('Payment submitted! Awaiting webhook confirmation...', 'info');
-          setTimeout(async () => {
+        handler: async function (response) {
+          setIsPaying(true);
+          try {
+            const verifyRes = await api.verifyRazorpayPayment({
+              bookingId: booking.id,
+              razorpayPaymentId: response?.razorpay_payment_id,
+              razorpayOrderId: response?.razorpay_order_id,
+              razorpaySignature: response?.razorpay_signature
+            });
+
+            if (verifyRes.success) {
+              setBooking(verifyRes.booking || {
+                ...booking,
+                paymentStatus: 'PAID',
+                razorpayPaymentId: response?.razorpay_payment_id
+              });
+              showToast('Payment verified successfully! Protected guarantee active.', 'success');
+            } else {
+              showToast(verifyRes.message || 'Payment verification failed.', 'error');
+            }
+          } catch (err) {
+            console.error('Failed to verify payment:', err);
+            // Fallback refetch
             try {
               const res = await api.getBookingById(id);
               if (res.success && res.booking) {
                 setBooking(res.booking);
-                showToast('Payment verified successfully!', 'success');
               }
-            } catch (err) {
-              console.error('Failed to refetch booking after payment:', err);
+            } catch (refetchErr) {
+              console.error('Refetch error:', refetchErr);
             }
-          }, 3000);
+          } finally {
+            setIsPaying(false);
+          }
         },
         modal: {
           ondismiss: function () {
             setIsPaying(false);
-            showToast('Payment cancelled.', 'info');
+            showToast('Payment window closed.', 'info');
           }
         }
       };
